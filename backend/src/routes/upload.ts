@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express"
 import multer from "multer"
+import rateLimit from "express-rate-limit"
 import path from "path"
 import fs from "fs"
 import { validate, UploadSchema } from "../middleware/validation.js"
@@ -123,10 +124,17 @@ router.post("/", authenticateJWT, upload.single("file"), validate(UploadSchema),
   }
 })
 
+const statusRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // limit each IP/user agent combination to 60 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
 /**
  * GET /api/upload/:docId/status
  */
-router.get("/:docId/status", authenticateJWT, async (req: Request, res: Response) => {
+router.get("/:docId/status", authenticateJWT, statusRateLimiter, async (req: Request, res: Response) => {
   const { docId } = req.params
 
   if (!hasDatabase()) {

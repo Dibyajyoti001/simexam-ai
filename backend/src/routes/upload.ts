@@ -82,14 +82,25 @@ router.post("/", authenticateJWT, upload.single("file"), validate(UploadSchema),
   }
 
   const { orgId, sessionId } = req.body
+  const resolvedUploadDir = path.resolve(uploadDir)
+  const safeFilePath = path.resolve(req.file.path)
+
+  if (!safeFilePath.startsWith(resolvedUploadDir + path.sep)) {
+    try {
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path)
+      }
+    } catch {}
+    return res.status(400).json({ error: "Invalid upload path" })
+  }
 
   if (process.env.ENABLE_AUTH && req.user && req.user.role !== "admin" && req.user.orgId !== orgId) {
-    fs.unlinkSync(req.file.path)
+    fs.unlinkSync(safeFilePath)
     return res.status(403).json({ error: "Unauthorized for this organization" })
   }
 
-  if (!validateMagicBytes(req.file.path, req.file.mimetype)) {
-    fs.unlinkSync(req.file.path)
+  if (!validateMagicBytes(safeFilePath, req.file.mimetype)) {
+    fs.unlinkSync(safeFilePath)
     return res.status(400).json({ error: "File content does not match extension" })
   }
 
@@ -100,13 +111,13 @@ router.post("/", authenticateJWT, upload.single("file"), validate(UploadSchema),
       const result = await dbQuery<{ id: string }>(
         `INSERT INTO uploaded_docs (org_id, session_id, filename, mime_type, size_bytes, storage_url, status)
          VALUES ($1, $2, $3, $4, $5, $6, 'processing') RETURNING id`,
-        [orgId, sessionId || null, req.file.originalname, req.file.mimetype, req.file.size, req.file.path]
+        [orgId, sessionId || null, req.file.originalname, req.file.mimetype, req.file.size, safeFilePath]
       )
       docId = result.rows[0].id
     }
 
     // Read file buffer for Python ingestion
-    const fileBuffer = fs.readFileSync(req.file.path)
+    const fileBuffer = fs.readFileSync(safeFilePath)
     
     // Fire-and-forget
     pythonIngest(docId, orgId, fileBuffer, req.file.originalname, req.file.mimetype).catch((err) => {

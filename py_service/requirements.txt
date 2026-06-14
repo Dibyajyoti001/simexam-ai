@@ -17,3 +17,4 @@ redis[asyncio]>=5.0
 python-multipart>=0.0.9
 python-jose[cryptography]>=3.3
 bcrypt>=4.1
+langchain-groq>=0.1

@@ -11,9 +11,9 @@ export function useTerminal() {
     },
   ])
 
-  const executeCode = useCallback(async (code: string) => {
+  const executeCode = useCallback(async (code: string, sessionId?: string) => {
     try {
-      const output = await executeCodeSnapshot(code)
+      const output = await executeCodeSnapshot(code, "javascript", sessionId)
       setOutputs((prev) => [...prev, output])
       return output
     } catch {

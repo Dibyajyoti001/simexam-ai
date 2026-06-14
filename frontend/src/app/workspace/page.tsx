@@ -21,6 +21,7 @@ import {
 } from "../../lib/constants"
 import { navigateTo } from "../../lib/navigation"
 import { classifyIntent } from "../../lib/codeAnalysis"
+import { createSession, submitSession } from "../../lib/api"
 import { useChat } from "../../hooks/useChat"
 import { useExamState } from "../../hooks/useExamState"
 import { useExamTimer } from "../../hooks/useExamTimer"
@@ -37,6 +38,11 @@ export default function WorkspacePage() {
   const [studentName] = useState(() => {
     if (typeof window === "undefined") return "Student"
     return sessionStorage.getItem(SESSION_KEYS.STUDENT_NAME) || user?.email?.split("@")[0] || "Student"
+  })
+
+  const [sessionId, setSessionId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null
+    return sessionStorage.getItem(SESSION_KEYS.SESSION_ID)
   })
 
   // Read intent from Hub & Intake
@@ -62,11 +68,25 @@ export default function WorkspacePage() {
     }
   }, [tenant.config])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!orgSlug || sessionId) return
+
+    void createSession({ orgSlug, studentName, email: user?.email })
+      .then((session) => {
+        sessionStorage.setItem(SESSION_KEYS.SESSION_ID, session.id)
+        setSessionId(session.id)
+      })
+      .catch((err) => {
+        console.warn("[Workspace] Could not create session:", err?.message || err)
+      })
+  }, [orgSlug, sessionId, studentName, user?.email])
+
   const [draft, setDraft] = useState("")
   const [debugVisible, setDebugVisible] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const chat = useChat(studentName, { orgSlug, assessmentType: activeMode })
+  const chat = useChat(studentName, { orgSlug, assessmentType: activeMode, sessionId: sessionId ?? undefined })
   const terminal = useTerminal()
   const examState = useExamState()
   const agentStatus = useAgentStatus()
@@ -107,7 +127,7 @@ export default function WorkspacePage() {
 
   function runCurrentCode() {
     agentStatus.setStatus("running")
-    terminal.executeCode(code).finally(() => agentStatus.setStatus("idle"))
+    terminal.executeCode(code, sessionId || undefined).finally(() => agentStatus.setStatus("idle"))
     chat.recordCodeSnapshot(code)
     examState.updateFromCode(code, chat.curveballFired)
     examState.registerInteraction(classifyIntent(code))
@@ -142,7 +162,15 @@ export default function WorkspacePage() {
       studentName,
       orgSlug,
       assessmentType: activeMode,
-      finalCode: code
+      sessionId: sessionId || undefined,
+      finalCode: code,
+    }
+
+    if (sessionId) {
+      void submitSession({ sessionId, finalCode: code, timeElapsedSeconds: payload.timeElapsedSeconds, curveballFired: chat.curveballFired })
+        .catch((err) => {
+          console.warn("[Workspace] Session submit failed:", err?.message || err)
+        })
     }
 
     sessionStorage.setItem(SESSION_KEYS.EVALUATION_PAYLOAD, JSON.stringify(payload))

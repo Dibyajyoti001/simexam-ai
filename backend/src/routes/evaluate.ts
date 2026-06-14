@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express"
-import { getTenantConfigBySlug, hasDatabase, recordEvaluation } from "../lib/db.js"
+import { getTenantConfigBySlug, hasDatabase, recordEvaluation, recordAgentEvent } from "../lib/db.js"
 import { validate, EvaluateRequestSchema } from "../middleware/validation.js"
 import { pythonEvaluate } from "../tools/pythonBridge.js"
 import { EvaluateRequestBody, TenantConfig } from "../types/index.js"
@@ -68,6 +68,19 @@ router.post("/", validate(EvaluateRequestSchema), async (req: Request, res: Resp
     if (body.sessionId && hasDatabase()) {
       try {
         await recordEvaluation({ sessionId: body.sessionId, result: formattedResult as any })
+        await recordAgentEvent({
+          sessionId: body.sessionId,
+          eventType: "evaluation",
+          actor: "system",
+          content: "Session evaluated",
+          metadata: {
+            passed: formattedResult.passed,
+            technicalAccuracy: formattedResult.technicalAccuracy,
+            adaptability: formattedResult.adaptability,
+            communication: formattedResult.communication,
+            efficiency: formattedResult.efficiency,
+          },
+        })
       } catch (err: any) {
         console.warn("[Evaluate] Persistence skipped:", err?.message)
       }

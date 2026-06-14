@@ -113,13 +113,13 @@ export async function evaluateSession(payload: {
   return response.json()
 }
 
-export async function executeCodeSnapshot(code: string, language = "javascript"): Promise<TerminalOutput> {
+export async function executeCodeSnapshot(code: string, language = "javascript", sessionId?: string): Promise<TerminalOutput> {
   const response = await fetch(`${BACKEND_URL}/api/execute`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ code, language }),
+    body: JSON.stringify({ code, language, sessionId }),
   })
 
   if (!response.ok) {

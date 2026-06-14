@@ -10,7 +10,7 @@ from schemas.types import (
     AnalyseRequest, AnalyseResponse,
     BehaviouralRequest, BehaviouralResponse
 )
-from middleware.security import get_service_key
+from middleware.security import verify_service_key
 
 from agents.evaluator import Evaluator
 from agents.rag_agent import retrieve_relevant
@@ -36,7 +36,7 @@ app.add_middleware(
 async def health():
     return {"status": "ok", "service": "simexam-py-service"}
 
-@app.post("/eval", dependencies=[Depends(get_service_key)])
+@app.post("/eval", dependencies=[Depends(verify_service_key)])
 async def evaluate(request: EvalRequest) -> EvalResponse:
     try:
         evaluator = Evaluator()
@@ -45,7 +45,7 @@ async def evaluate(request: EvalRequest) -> EvalResponse:
         logger.error(f"Eval error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/ingest", dependencies=[Depends(get_service_key)])
+@app.post("/ingest", dependencies=[Depends(verify_service_key)])
 async def ingest(request: IngestRequest) -> IngestResponse:
     try:
         # Decode base64
@@ -72,7 +72,7 @@ async def ingest(request: IngestRequest) -> IngestResponse:
         logger.error(f"Ingest error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/retrieve", dependencies=[Depends(get_service_key)])
+@app.post("/retrieve", dependencies=[Depends(verify_service_key)])
 async def retrieve(request: RetrieveRequest) -> RetrieveResponse:
     try:
         db_url = os.environ.get("DATABASE_URL")
@@ -82,7 +82,7 @@ async def retrieve(request: RetrieveRequest) -> RetrieveResponse:
         logger.error(f"Retrieve error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/analyse", dependencies=[Depends(get_service_key)])
+@app.post("/analyse", dependencies=[Depends(verify_service_key)])
 async def analyse(request: AnalyseRequest) -> AnalyseResponse:
     try:
         analyser = ASTAnalyser()
@@ -91,7 +91,7 @@ async def analyse(request: AnalyseRequest) -> AnalyseResponse:
         logger.error(f"Analyse error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/behavioural", dependencies=[Depends(get_service_key)])
+@app.post("/behavioural", dependencies=[Depends(verify_service_key)])
 async def behavioural(request: BehaviouralRequest) -> BehaviouralResponse:
     try:
         return score_behaviour(request.events, request.config)

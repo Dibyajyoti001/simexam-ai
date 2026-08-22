@@ -38,8 +38,16 @@ app.get("/health", (_, res) => {
   })
 })
 
-app.post("/api/db/init", async (_req, res) => {
+app.post("/api/db/init", async (req, res) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
+
+  const adminSecret = process.env.ADMIN_SECRET || process.env.SERVICE_SECRET
+  if (process.env.NODE_ENV === "production" && adminSecret) {
+    const provided = req.headers["x-admin-secret"] || req.headers["authorization"]
+    if (provided !== adminSecret && provided !== `Bearer ${adminSecret}`) {
+      return res.status(403).json({ error: "Forbidden: Admin secret required in production" })
+    }
+  }
 
   try {
     await initDatabase()

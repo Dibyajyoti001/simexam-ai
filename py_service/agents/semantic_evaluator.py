@@ -104,14 +104,14 @@ class SemanticEvaluator:
             )
 
         try:
-            llm = ChatGroq(model="llama3-8b-8192", api_key=groq_api_key)
+            llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
             parser = JsonOutputParser()
             
-            rubric_text = ", ".join([f"{d.name} ({d.weight})" for d in request.rubric.dimensions])
+            rubric_text = ", ".join([f"{d.name} ({d.weight})" for d in request.rubric.dimensions]) if request.rubric and request.rubric.dimensions else "Standard Technical Rubric"
             
             prompt = PromptTemplate(
                 template="""
-                You are an expert grader. Evaluate the following essay against the rubric: {rubric}.
+                You are an expert technical evaluator. Evaluate the following technical essay against the rubric: {rubric}.
                 The student's essay: {essay}
                 
                 Respond in valid JSON with the following keys:
@@ -131,10 +131,16 @@ class SemanticEvaluator:
             chain = prompt | llm | parser
             result = await chain.ainvoke({"rubric": rubric_text, "essay": request.final_code})
             
-            return EvalResponse(**result)
+            return EvalResponse(
+                tests_passed=1 if result.get("passed", False) else 0,
+                tests_total=1,
+                **result
+            )
             
         except Exception as e:
             return EvalResponse(
+                tests_passed=0,
+                tests_total=1,
                 passed=False,
                 overall_score=0.0,
                 overall_feedback=f"Error evaluating essay semantically: {str(e)}"

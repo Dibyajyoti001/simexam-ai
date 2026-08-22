@@ -86,8 +86,10 @@ export function useExamTimer({
     return () => window.clearInterval(interval)
   }, [curveballAtSeconds, durationSeconds, running])
 
-  // Note: Shift+D debug shortcut is handled ONLY here (removed from workspace page to avoid double-firing)
+  // Note: Shift+D debug shortcut is strictly guarded for DEV mode
   useEffect(() => {
+    if (!import.meta.env.DEV) return
+
     function handleKeyDown(event: KeyboardEvent) {
       if (event.shiftKey && event.key.toLowerCase() === "d" && !curveballRef.current) {
         curveballRef.current = true

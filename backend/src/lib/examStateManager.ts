@@ -2,9 +2,45 @@ import { ExamState, CodeState } from "../types/index.js"
 import { cacheGet, cacheSet } from "./cache.js"
 
 export function deriveCodeState(code: string): CodeState {
-  if (!code || code.trim().length < 5) return "INITIAL"
-  // Generic fallback: Assume if they wrote significant code it's compiling/in progress.
-  // In a real system, the Python microservice or AST evaluator would supply this state.
+  if (!code || code.trim().length < 15) return "INITIAL"
+  const trimmed = code.trim()
+
+  // Syntax balance checks
+  let openBraces = 0
+  let openParens = 0
+  let openBrackets = 0
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i]
+    if (ch === '{') openBraces++
+    else if (ch === '}') openBraces--
+    else if (ch === '(') openParens++
+    else if (ch === ')') openParens--
+    else if (ch === '[') openBrackets++
+    else if (ch === ']') openBrackets--
+  }
+  if (openBraces !== 0 || openParens !== 0 || openBrackets !== 0) {
+    return "SYNTAX_ERROR"
+  }
+
+  // Check for dangling keywords at end of code
+  if (/\b(function|const|let|var|if|for|while|class)\s*$/.test(trimmed)) {
+    return "SYNTAX_ERROR"
+  }
+
+  // Check for optimized algorithmic structures
+  if (
+    trimmed.includes("return") &&
+    (trimmed.includes("Map") ||
+      trimmed.includes("Set") ||
+      trimmed.includes("memo") ||
+      trimmed.includes("dp") ||
+      trimmed.includes("binarySearch") ||
+      trimmed.includes("cache")) &&
+    trimmed.length > 200
+  ) {
+    return "OPTIMIZED"
+  }
+
   return "COMPILING"
 }
 

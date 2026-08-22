@@ -39,6 +39,12 @@ import { useAgentStatus } from "../../hooks/useAgentStatus"
 import { useAuth } from "../../hooks/useAuth"
 import { TenantConfig } from "../../types/index"
 
+interface MultiModeState {
+  coding: string
+  conceptual: string
+  system_design: string
+}
+
 export default function WorkspacePage() {
   const navigate = useNavigate()
   const { orgSlug } = useParams<{ orgSlug: string }>()
@@ -96,7 +102,7 @@ export default function WorkspacePage() {
   const hubIntent = typeof window !== "undefined" ? sessionStorage.getItem("simexam_hub_intent") : "exam"
   const intakeFormat = typeof window !== "undefined" ? sessionStorage.getItem("simexam_intake_format") : null
   
-  // Current active mode (allows switching on the fly)
+  // Current active mode
   const [activeMode, setActiveMode] = useState<"coding" | "system_design" | "conceptual" | "multiple_choice">(() => {
     if (intakeFormat === "system_design" || intakeFormat === "conceptual" || intakeFormat === "coding") {
       return intakeFormat
@@ -110,16 +116,36 @@ export default function WorkspacePage() {
     }
   }, [effectiveConfig.exam?.type, intakeFormat])
 
-  const [code, setCode] = useState(() => {
-    if (typeof window === "undefined") return effectiveConfig.exam.starterCode || INITIAL_CODE
-    return sessionStorage.getItem(SESSION_KEYS.CODE) || effectiveConfig.exam.starterCode || INITIAL_CODE
+  // Separated, isolated state storage per assessment mode
+  const [modeState, setModeState] = useState<MultiModeState>(() => {
+    const starter = effectiveConfig.exam.starterCode || INITIAL_CODE
+    return {
+      coding: (typeof window !== "undefined" && sessionStorage.getItem(SESSION_KEYS.CODE)) || starter,
+      conceptual: (typeof window !== "undefined" && sessionStorage.getItem("simexam_mode_conceptual")) || "# Design & Architectural Tradeoffs\n\nExplain your high-level system architecture, data flow, bottlenecks, and security considerations here...",
+      system_design: (typeof window !== "undefined" && sessionStorage.getItem("simexam_mode_whiteboard")) || "{}",
+    }
   })
 
   useEffect(() => {
     if (effectiveConfig.exam?.starterCode && !sessionStorage.getItem(SESSION_KEYS.CODE)) {
-      setCode(effectiveConfig.exam.starterCode)
+      setModeState(prev => ({ ...prev, coding: effectiveConfig.exam.starterCode }))
     }
   }, [effectiveConfig.exam?.starterCode])
+
+  const setCodingContent = (content: string) => {
+    setModeState(prev => ({ ...prev, coding: content }))
+    sessionStorage.setItem(SESSION_KEYS.CODE, content)
+  }
+
+  const setConceptualContent = (content: string) => {
+    setModeState(prev => ({ ...prev, conceptual: content }))
+    sessionStorage.setItem("simexam_mode_conceptual", content)
+  }
+
+  const setSystemDesignContent = (content: string) => {
+    setModeState(prev => ({ ...prev, system_design: content }))
+    sessionStorage.setItem("simexam_mode_whiteboard", content)
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -168,10 +194,6 @@ export default function WorkspacePage() {
   })
 
   useEffect(() => {
-    sessionStorage.setItem(SESSION_KEYS.CODE, code)
-  }, [code])
-
-  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return
@@ -183,30 +205,31 @@ export default function WorkspacePage() {
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [activeMode, code])
+  }, [activeMode, modeState.coding])
 
   function runCurrentCode() {
     agentStatus.setStatus("running")
-    terminal.executeCode(code, effectiveConfig.exam?.allowedLanguages?.[0] || "javascript", sessionId || undefined)
+    terminal.executeCode(modeState.coding, effectiveConfig.exam?.allowedLanguages?.[0] || "javascript", sessionId || undefined)
       .finally(() => agentStatus.setStatus("idle"))
-    chat.recordCodeSnapshot(code)
-    examState.updateFromCode(code, chat.curveballFired)
-    examState.registerInteraction(classifyIntent(code))
+    chat.recordCodeSnapshot(modeState.coding)
+    examState.updateFromCode(modeState.coding, chat.curveballFired)
+    examState.registerInteraction(classifyIntent(modeState.coding))
   }
 
   async function handleSend() {
     const trimmed = draft.trim()
     if (!trimmed || chat.isTyping) return
 
+    const activeContent = activeMode === "conceptual" ? modeState.conceptual : activeMode === "system_design" ? modeState.system_design : modeState.coding
     const intent = classifyIntent(trimmed)
     examState.registerInteraction(intent)
-    chat.recordCodeSnapshot(code)
+    chat.recordCodeSnapshot(activeContent)
     
     agentStatus.setStatus("thinking")
-    await chat.sendMessage(trimmed, examState.examState, code)
+    await chat.sendMessage(trimmed, examState.examState, activeContent)
     agentStatus.setStatus("idle")
     
-    examState.updateFromCode(code, chat.curveballFired)
+    examState.updateFromCode(activeContent, chat.curveballFired)
     setDraft("")
   }
 
@@ -214,23 +237,32 @@ export default function WorkspacePage() {
     if (submitting) return
     setSubmitting(true)
 
+    // Pick authoritative content matching the tenant's primary configured format
+    const primaryType = effectiveConfig.exam?.type || activeMode
+    const finalSubmissionContent = primaryType === "system_design"
+      ? modeState.system_design
+      : primaryType === "conceptual"
+      ? modeState.conceptual
+      : modeState.coding
+
     const payload = {
       conversationHistory: chat.buildTranscript(),
-      codeSnapshots: chat.codeSnapshots.length > 0 ? chat.codeSnapshots : [code],
+      codeSnapshots: chat.codeSnapshots.length > 0 ? chat.codeSnapshots : [finalSubmissionContent],
       timeElapsedSeconds: Math.max(0, (effectiveConfig.exam.timeLimitSeconds || 600) - secondsLeft),
       curveballFired: chat.curveballFired,
       curveballAddressed: examState.examState.curveballAddressed,
       studentName,
       orgSlug: resolvedSlug,
-      assessmentType: activeMode,
+      assessmentType: primaryType,
       sessionId: sessionId || undefined,
-      finalCode: code,
+      finalCode: finalSubmissionContent,
+      hintsGiven: examState.examState.hintsGiven,
     }
 
     if (sessionId) {
       void submitSession({
         sessionId,
-        finalCode: code,
+        finalCode: finalSubmissionContent,
         timeElapsedSeconds: payload.timeElapsedSeconds,
         curveballFired: chat.curveballFired,
       }).catch((err) => {
@@ -336,8 +368,8 @@ export default function WorkspacePage() {
                 <div className="flex flex-1 flex-col overflow-hidden">
                   <div className="flex-1 overflow-hidden">
                     <CodeEditor
-                      code={code}
-                      onChange={setCode}
+                      code={modeState.coding}
+                      onChange={setCodingContent}
                       onRun={runCurrentCode}
                       onSubmit={() => submitAssessment(false)}
                       filename={editorFilename}
@@ -354,8 +386,8 @@ export default function WorkspacePage() {
              {activeMode === "conceptual" && (
                 <div className="flex-1 overflow-hidden">
                    <RichTextEditor
-                     value={code}
-                     onChange={setCode}
+                     value={modeState.conceptual}
+                     onChange={setConceptualContent}
                      sessionId={sessionId}
                      orgSlug={resolvedSlug}
                    />
@@ -365,8 +397,8 @@ export default function WorkspacePage() {
              {activeMode === "system_design" && (
                 <div className="flex-1 overflow-hidden">
                    <WhiteboardCanvas
-                     value={code}
-                     onChange={setCode}
+                     value={modeState.system_design}
+                     onChange={setSystemDesignContent}
                      sessionId={sessionId}
                      orgSlug={resolvedSlug}
                    />

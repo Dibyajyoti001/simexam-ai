@@ -12,6 +12,7 @@ interface WhiteboardCanvasProps {
 
 export function WhiteboardCanvas({ value: _value, onChange, sessionId, orgSlug }: WhiteboardCanvasProps) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
   const resetTimeout = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
@@ -34,20 +35,24 @@ export function WhiteboardCanvas({ value: _value, onChange, sessionId, orgSlug }
     resetTimeout()
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [sessionId, orgSlug])
 
   return (
-    <div className="flex h-full flex-col rounded-3xl border border-white/10 bg-[#161618] overflow-hidden relative">
+    <div className="flex h-full flex-col rounded-2xl border border-white/10 bg-[#161618] overflow-hidden relative">
       <Tldraw
         onMount={(editor) => {
           editor.store.listen(() => {
-            const snapshot = (editor.store as any).getSnapshot
-              ? (editor.store as any).getSnapshot()
-              : (editor as any).getSnapshot
-              ? (editor as any).getSnapshot()
-              : {}
-            onChange(JSON.stringify(snapshot))
+            if (debounceRef.current) clearTimeout(debounceRef.current)
+            debounceRef.current = setTimeout(() => {
+              const snapshot = (editor.store as any).getSnapshot
+                ? (editor.store as any).getSnapshot()
+                : (editor as any).getSnapshot
+                ? (editor as any).getSnapshot()
+                : {}
+              onChange(JSON.stringify(snapshot))
+            }, 350)
             resetTimeout()
           }, { source: 'user', scope: 'document' })
         }}

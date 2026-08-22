@@ -68,7 +68,7 @@ router.put("/:orgSlug/config", authenticateJWT, requireAdmin, async (req: Reques
  * Admin or Creator generates a complete domain-agnostic exam using AI from a prompt,
  * question criteria, or uploaded doc snippet.
  */
-router.post("/:orgSlug/generate-exam", async (req: Request, res: Response) => {
+router.post("/:orgSlug/generate-exam", authenticateJWT, requireAdmin, async (req: Request, res: Response) => {
   const { prompt, domain, seniority, assessmentType, allowedLanguages, docText } = req.body
 
   if (!prompt && !docText) {

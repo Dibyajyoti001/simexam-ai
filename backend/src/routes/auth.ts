@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express"
+import crypto from "crypto"
 import { validate, LoginSchema, RegisterSchema, InviteTokenSchema } from "../middleware/validation.js"
-import { hashPassword, comparePassword, generateToken } from "../middleware/authMiddleware.js"
+import { hashPassword, comparePassword, generateToken, authenticateJWT, requireAdmin } from "../middleware/authMiddleware.js"
 import { hasDatabase, dbQuery } from "../lib/db.js"
 
 const router = Router()
@@ -177,7 +178,7 @@ router.post("/student/verify", validate(InviteTokenSchema), async (req: Request,
  * POST /api/auth/student/create
  * Admin-only: creates a student invite record and returns the token.
  */
-router.post("/student/create", async (req: Request, res: Response) => {
+router.post("/student/create", authenticateJWT, requireAdmin, async (req: Request, res: Response) => {
   if (!hasDatabase()) {
     return res.status(501).json({ error: "Database not configured" })
   }
@@ -188,14 +189,23 @@ router.post("/student/create", async (req: Request, res: Response) => {
   }
 
   try {
-    // Generate a short random token
-    const inviteToken = Array.from({ length: 4 }, () =>
-      Math.random().toString(36).substring(2, 4).toUpperCase()
-    ).join("-")
+    // Resolve orgId if slug was provided
+    let resolvedOrgId = orgId
+    const orgCheck = await dbQuery<{ id: string }>(
+      "SELECT id FROM orgs WHERE id::text = $1 OR slug = $1",
+      [orgId]
+    )
+    if (orgCheck.rows.length > 0) {
+      resolvedOrgId = orgCheck.rows[0].id
+    }
+
+    // Generate a secure CSPRNG invite token (e.g., A1B2-C3D4)
+    const raw = crypto.randomBytes(4).toString("hex").toUpperCase()
+    const inviteToken = `${raw.slice(0, 4)}-${raw.slice(4, 8)}`
 
     const result = await dbQuery<{ id: string }>(
       "INSERT INTO students (org_id, name, email, invite_token) VALUES ($1, $2, $3, $4) RETURNING id",
-      [orgId, name, email || null, inviteToken]
+      [resolvedOrgId, name, email || null, inviteToken]
     )
 
     res.status(201).json({ id: result.rows[0].id, name, inviteToken })

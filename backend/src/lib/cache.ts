@@ -6,7 +6,20 @@ type MemoryEntry = {
 }
 
 const memoryCache = new Map<string, MemoryEntry>()
+const MAX_MEMORY_KEYS = 5000
 let redisClient: any = null
+
+// Periodic sweep to actively purge expired keys from memory every 60s
+if (typeof setInterval !== "undefined") {
+  setInterval(() => {
+    const now = Date.now()
+    for (const [k, v] of memoryCache.entries()) {
+      if (v.expiresAt < now) {
+        memoryCache.delete(k)
+      }
+    }
+  }, 60_000).unref?.()
+}
 
 if (process.env.REDIS_URL) {
   try {

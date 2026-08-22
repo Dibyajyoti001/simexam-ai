@@ -8,16 +8,18 @@ import {
   recordCodeSnapshot,
   submitSession,
   dbQuery,
+  getTenantConfigBySlug,
 } from "../lib/db.js"
 import { deriveCodeState } from "../lib/examStateManager.js"
 import { authenticateJWT, requireStudentAccess } from "../middleware/authMiddleware.js"
 import { generateExamConfig } from "../agents/examGenerator.js"
+import { prefillSessionCache } from "../lib/speculativePrefill.js"
 
 const router = Router()
 
 /**
  * POST /api/session
- * Creates a new exam session.
+ * Creates a new exam session and triggers speculative CAG prefill in background.
  */
 router.post("/", async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
@@ -36,6 +38,14 @@ router.post("/", async (req: Request, res: Response) => {
       content: "Session started",
       metadata: { orgSlug, studentName },
     })
+
+    // Speculative CAG prefill in background (primes zero-latency responses for first turn)
+    getTenantConfigBySlug(orgSlug)
+      .then((cfg) => {
+        if (cfg) prefillSessionCache(session.id, cfg).catch(() => {})
+      })
+      .catch(() => {})
+
     return res.status(201).json(session)
   } catch (err: any) {
     console.error("[Session] Create failed:", err?.message)
@@ -80,11 +90,11 @@ router.get("/my", authenticateJWT, async (req: Request, res: Response) => {
 
   try {
     const result = await dbQuery(
-      `SELECT es.id, es.org_id, es.student_id, es.status, es.started_at, es.submitted_at,
-              es.time_elapsed_seconds, es.passed, es.final_code
-       FROM exam_sessions es
-       WHERE es.student_id = $1
-       ORDER BY es.started_at DESC
+      `SELECT s.id, s.org_id, s.student_id, s.status, s.started_at, s.submitted_at,
+              s.time_elapsed_seconds, s.passed, s.final_code
+       FROM sessions s
+       WHERE s.student_id = $1
+       ORDER BY s.started_at DESC
        LIMIT 20`,
       [userId]
     )
@@ -128,7 +138,7 @@ router.get("/:sessionId/events", authenticateJWT, requireStudentAccess, async (r
 /**
  * POST /api/session/:sessionId/events
  */
-router.post("/:sessionId/events", async (req: Request, res: Response) => {
+router.post("/:sessionId/events", authenticateJWT, requireStudentAccess, async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
   const { eventType, actor, content, metadata } = req.body || {}
@@ -154,7 +164,7 @@ router.post("/:sessionId/events", async (req: Request, res: Response) => {
 /**
  * POST /api/session/:sessionId/snapshots
  */
-router.post("/:sessionId/snapshots", async (req: Request, res: Response) => {
+router.post("/:sessionId/snapshots", authenticateJWT, requireStudentAccess, async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
   const { code, stdout, stderr, exitCode, testResults } = req.body || {}
@@ -179,18 +189,27 @@ router.post("/:sessionId/snapshots", async (req: Request, res: Response) => {
 
 /**
  * POST /api/session/:sessionId/submit
+ * Computes server-authoritative elapsed time against database started_at.
  */
-router.post("/:sessionId/submit", async (req: Request, res: Response) => {
+router.post("/:sessionId/submit", authenticateJWT, requireStudentAccess, async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
   const { finalCode, timeElapsedSeconds, curveballFired } = req.body || {}
   if (!finalCode) return res.status(400).json({ error: "finalCode is required" })
 
   try {
+    // Determine server-authoritative elapsed time
+    let authoritativeElapsed = timeElapsedSeconds || 0
+    const existingSession = await getExamSession(req.params.sessionId)
+    if (existingSession?.startedAt) {
+      const serverSeconds = Math.max(1, Math.round((Date.now() - new Date(existingSession.startedAt).getTime()) / 1000))
+      authoritativeElapsed = serverSeconds
+    }
+
     const session = await submitSession({
       sessionId: req.params.sessionId,
       finalCode,
-      timeElapsedSeconds,
+      timeElapsedSeconds: authoritativeElapsed,
       curveballFired,
     })
     await recordAgentEvent({
@@ -198,7 +217,7 @@ router.post("/:sessionId/submit", async (req: Request, res: Response) => {
       eventType: "submission",
       actor: "student",
       content: "Assessment submitted",
-      metadata: { timeElapsedSeconds, curveballFired },
+      metadata: { timeElapsedSeconds: authoritativeElapsed, curveballFired },
     })
     return res.json(session)
   } catch (err: any) {

@@ -107,6 +107,11 @@ export async function evaluateSession(payload: {
   studentName: string
   sessionId?: string
   orgSlug?: string
+  finalCode?: string
+  assessmentType?: string
+  testsPassed?: number
+  testsTotal?: number
+  hintsGiven?: number
 }): Promise<EvaluationResult> {
   const response = await fetch(`${BACKEND_URL}/api/evaluate`, {
     method: "POST",

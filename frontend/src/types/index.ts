@@ -127,6 +127,11 @@ export interface EvaluateRequestBody {
   studentName: string
   sessionId?: string
   orgSlug?: string
+  finalCode?: string
+  assessmentType?: string
+  testsPassed?: number
+  testsTotal?: number
+  hintsGiven?: number
 }
 
 export interface EvaluationResult {

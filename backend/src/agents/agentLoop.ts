@@ -31,10 +31,10 @@ const CACHEABLE_INTENTS: Set<IntentClass> = new Set([
  * Core orchestrator for every agent turn.
  *
  * 1. Build context: load tenant config, compress message history
- * 2. Route: call routeIntent to pick the right handler & get ToolResult
- * 3. Compose: stream or send the response via streamCallback
- * 4. Persist: record agent_event with intent, source, latency
- * 5. Update CAG: if response came from LLM and intent is cacheable
+ * 2. Intent routing & CAG check (instant 0ms for static/prefilled/sandbox turns)
+ * 3. Semantic Cache Check (only on non-static turns if needed)
+ * 4. LLM Generation (streamed directly to client)
+ * 5. Persist agent event with real latency metrics
  */
 export async function runAgentLoop(
   trigger: AgentTrigger,
@@ -56,10 +56,17 @@ export async function runAgentLoop(
       studentName: extractStudentName(trigger),
     }
 
-    // ── 1.5. Semantic Cache Check ────────────────────────────────
     let result: ToolResult | null = null
 
-    if (trigger.type !== "proactive" && trigger.message) {
+    // ── 2. First Route via Instant CAG & Intent Classifiers ───────
+    try {
+      result = await routeIntent(trigger, context)
+    } catch (err: any) {
+      console.warn("[AgentLoop] routeIntent threw, falling back to cache/LLM:", err?.message)
+    }
+
+    // ── 3. Check Semantic Cache if turn was not resolved by CAG ──
+    if ((!result || !result.resolved) && trigger.type !== "proactive" && trigger.message) {
       try {
         const queryEmbedding = await computeEmbedding(trigger.message)
         const cached = await SemanticCache.search(trigger.message, tenantConfig.orgId, queryEmbedding)
@@ -75,36 +82,31 @@ export async function runAgentLoop(
       }
     }
 
-    // ── 2. Route to the right handler ────────────────────────────
-    if (!result) {
-      try {
-        result = await routeIntent(trigger, context)
-      } catch (err: any) {
-        console.error("[AgentLoop] routeIntent failed:", err?.message)
-        result = await fallbackLLMResponse(trigger, context)
-      }
+    // ── 4. Fallback to LLM if still unresolved ───────────────────
+    if (!result || !result.resolved) {
+      result = await fallbackLLMResponse(trigger, context)
     }
 
-    // ── 3. Compose response via stream callback ──────────────────
-    if (result.source === "llm" && result.content.length > 100) {
-      // Simulate streaming for LLM responses by chunking the text
+    // ── 5. Stream or Deliver Response ────────────────────────────
+    if (result.source === "llm" && result.content.length > 50) {
+      // Chunk tokens smoothly to client SSE stream
       const words = result.content.split(" ")
       let buffer = ""
       for (let i = 0; i < words.length; i++) {
         buffer += (i > 0 ? " " : "") + words[i]
-        if (buffer.length > 30 || i === words.length - 1) {
+        if (buffer.length > 25 || i === words.length - 1) {
           streamCallback(JSON.stringify({ text: buffer, source: result.source }))
           buffer = ""
         }
       }
     } else {
-      // CAG / static / sandbox — send the whole thing at once
+      // CAG / static / sandbox — deliver instantaneously
       streamCallback(JSON.stringify({ text: result.content, source: result.source }))
     }
 
     const latency = Date.now() - startTime
 
-    // ── 4. Persist agent event ───────────────────────────────────
+    // ── 6. Persist agent event ───────────────────────────────────
     if (hasDatabase() && trigger.sessionId) {
       const intent = trigger.type === "proactive"
         ? (trigger.proactiveAction || "SILENCE_TIMEOUT")
@@ -129,8 +131,8 @@ export async function runAgentLoop(
       }
     }
 
-    // ── 5. Update CAG & Semantic Cache ───────────────────────────
-    if (result!.source === "llm") {
+    // ── 7. Update CAG & Semantic Cache for future instant turns ──
+    if (result.source === "llm") {
       const intent = classifyIntent(trigger.message || "")
       if (CACHEABLE_INTENTS.has(intent)) {
         const cagKey = buildCAGKey(
@@ -140,16 +142,15 @@ export async function runAgentLoop(
           trigger.orgSlug
         )
         // Fire-and-forget CAG store
-        cagStore(cagKey, result!.content).catch((err) =>
+        cagStore(cagKey, result.content).catch((err) =>
           console.warn("[AgentLoop] CAG store failed:", err?.message)
         )
         
         // Fire-and-forget Semantic Cache store
         if (trigger.message) {
-          const storeEmbedding = await computeEmbedding(trigger.message)
-          SemanticCache.store(trigger.message, result!.content, tenantConfig.orgId, storeEmbedding).catch((err) =>
-            console.warn("[AgentLoop] SemanticCache store failed:", err?.message)
-          )
+          computeEmbedding(trigger.message)
+            .then((emb) => SemanticCache.store(trigger.message!, result!.content, tenantConfig.orgId, emb))
+            .catch(() => {})
         }
       }
     }
@@ -161,7 +162,7 @@ export async function runAgentLoop(
     console.error("[AgentLoop] Fatal error:", err?.message)
     streamCallback(
       JSON.stringify({
-        text: "I ran into a technical issue. Could you try that again?",
+        text: "I ran into a brief hiccup. Could you restate or continue with your code?",
         source: "llm",
       })
     )
@@ -171,27 +172,24 @@ export async function runAgentLoop(
 // ── Helpers ───────────────────────────────────────────────────────
 
 async function buildMessagesFromTrigger(trigger: AgentTrigger): Promise<GeminiMessage[]> {
-  // If the trigger contains a message, wrap it as a user message
   const messages: GeminiMessage[] = []
 
-  // Try to load recent events from DB for context
   if (hasDatabase() && trigger.sessionId) {
     try {
       const events = await listSessionEvents(trigger.sessionId)
-      const recentEvents = events.slice(-12) // Last 12 events
-      for (const event of recentEvents) {
-        if (!event.content) continue
-        messages.push({
-          role: event.actor === "student" ? "user" : "model",
-          parts: [{ text: event.content }],
-        })
+      for (const ev of events) {
+        if (ev.eventType === "message") {
+          messages.push({
+            role: ev.actor === "student" ? "user" : "model",
+            parts: [{ text: ev.content || "" }],
+          })
+        }
       }
-    } catch (err: any) {
-      console.warn("[AgentLoop] Could not load session events:", err?.message)
+    } catch {
+      // Fallback
     }
   }
 
-  // Add the current message
   if (trigger.message) {
     messages.push({
       role: "user",
@@ -202,48 +200,31 @@ async function buildMessagesFromTrigger(trigger: AgentTrigger): Promise<GeminiMe
   return messages
 }
 
-/**
- * Extract the student's name from the trigger.
- * Falls back to "Candidate" only if no name is available.
- */
 function extractStudentName(trigger: AgentTrigger): string {
-  // Prefer name passed directly on the trigger (set by chat route from request body)
-  if (trigger.studentName) return trigger.studentName
-  // Fall back to tenant-level default (useful for proactive triggers)
-  return "Candidate"
+  return trigger.studentName || "Candidate"
 }
 
 async function fallbackLLMResponse(
   trigger: AgentTrigger,
   context: AgentLoopContext
 ): Promise<ToolResult> {
-  try {
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) throw new Error("GEMINI_API_KEY not configured")
+  const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY || "dummy"
+  const model = createSimulatorModel(apiKey, context.studentName, context.tenantConfig)
 
-    const compressed = buildCompressedContext(
-      enforceAlternatingRoles(context.messages),
-      context.examState
-    )
+  const compressed = buildCompressedContext(
+    enforceAlternatingRoles(context.messages),
+    context.examState
+  )
 
-    const model = createSimulatorModel(apiKey, context.studentName, context.tenantConfig)
-    const result = await withRetry(
-      () => model.generateContent({ contents: compressed }),
-      2,
-      "AgentLoop fallback"
-    )
+  const resp = await withRetry(
+    () => model.generateContent({ contents: compressed }),
+    2,
+    "AgentLoopFallbackLLM"
+  )
 
-    return {
-      resolved: true,
-      source: "llm",
-      content: result.response.text(),
-    }
-  } catch (err: any) {
-    console.error("[AgentLoop] Fallback LLM also failed:", err?.message)
-    return {
-      resolved: false,
-      source: "llm",
-      content: "I'm having some trouble right now. Let me know if you'd like to try again.",
-    }
+  return {
+    resolved: true,
+    source: "llm",
+    content: resp.response.text(),
   }
 }

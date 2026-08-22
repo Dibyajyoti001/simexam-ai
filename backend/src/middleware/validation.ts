@@ -55,6 +55,10 @@ export const EvaluateRequestSchema = z.object({
   studentName: safeName,
   sessionId: uuidField.nullable().optional(),
   orgSlug: safeSlug.optional(),
+  assessmentType: z.enum(["coding", "conceptual", "system_design", "multiple_choice"]).optional(),
+  testsPassed: z.number().int().min(0).optional(),
+  testsTotal: z.number().int().min(0).optional(),
+  hintsGiven: z.number().int().min(0).optional(),
 })
 
 // ── Session ───────────────────────────────────────────────────────

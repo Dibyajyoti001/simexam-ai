@@ -127,6 +127,9 @@ export interface EvaluateRequestBody {
   sessionId?: string
   orgSlug?: string
   assessmentType?: AssessmentType
+  testsPassed?: number
+  testsTotal?: number
+  hintsGiven?: number
 }
 
 export interface EvaluationResult {

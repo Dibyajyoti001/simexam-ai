@@ -65,8 +65,8 @@ export function securityHeaders() {
  */
 export function requireSessionOwner() {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    // Skip in dev mode or when DB is unavailable
-    if (!process.env.ENABLE_AUTH || !hasDatabase()) {
+    // Skip in dev mode when explicitly disabled or when DB is unavailable
+    if (process.env.ENABLE_AUTH === "false" || !hasDatabase()) {
       next()
       return
     }

@@ -63,8 +63,8 @@ export async function verifyToken(token: string): Promise<JWTPayload> {
  * In dev mode (ENABLE_AUTH not set), all requests pass through.
  */
 export function authenticateJWT(req: Request, res: Response, next: NextFunction): void {
-  if (!process.env.ENABLE_AUTH) {
-    // Dev mode — skip auth
+  if (process.env.ENABLE_AUTH === "false") {
+    // Explicitly disabled for dev/test
     next()
     return
   }
@@ -92,7 +92,7 @@ export function authenticateJWT(req: Request, res: Response, next: NextFunction)
  * Requires the authenticated user to have the 'admin' role.
  */
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  if (!process.env.ENABLE_AUTH) {
+  if (process.env.ENABLE_AUTH === "false") {
     next()
     return
   }
@@ -115,7 +115,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
  * session within their org.
  */
 export function requireStudentAccess(req: Request, res: Response, next: NextFunction): void {
-  if (!process.env.ENABLE_AUTH) {
+  if (process.env.ENABLE_AUTH === "false") {
     next()
     return
   }

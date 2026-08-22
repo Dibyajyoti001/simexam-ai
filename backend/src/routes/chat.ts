@@ -4,6 +4,7 @@ import { runAgentLoop } from "../agents/agentLoop.js"
 import { AgentTrigger } from "../types/index.js"
 import { getTenantConfigBySlug, hasDatabase } from "../lib/db.js"
 import { createInitialExamState } from "../lib/examStateManager.js"
+import { authenticateJWT } from "../middleware/authMiddleware.js"
 
 const router = Router()
 
@@ -11,7 +12,7 @@ const router = Router()
  * POST /api/chat
  * Streams AI agent responses back via SSE.
  */
-router.post("/", validate(ChatRequestSchema), async (req: Request, res: Response) => {
+router.post("/", authenticateJWT, validate(ChatRequestSchema), async (req: Request, res: Response) => {
   const { messages, studentName, examState, sessionId, orgSlug, assessmentType } = req.body
 
   if (!messages || !studentName) {

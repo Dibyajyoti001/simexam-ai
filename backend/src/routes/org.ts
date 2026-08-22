@@ -8,7 +8,7 @@ import {
   dbQuery,
 } from "../lib/db.js"
 import { cacheDel, cacheGet, cacheSet } from "../lib/cache.js"
-import { authenticateJWT, requireAdmin } from "../middleware/authMiddleware.js"
+import { authenticateJWT, requireAdmin, requireOrgOwnership } from "../middleware/authMiddleware.js"
 import { generateExamConfig } from "../agents/examGenerator.js"
 import { TenantConfig } from "../types/index.js"
 
@@ -45,7 +45,7 @@ router.get("/:orgSlug/config", async (req: Request, res: Response) => {
 /**
  * PUT /api/org/:orgSlug/config
  */
-router.put("/:orgSlug/config", authenticateJWT, requireAdmin, async (req: Request, res: Response) => {
+router.put("/:orgSlug/config", authenticateJWT, requireAdmin, requireOrgOwnership, async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
   const config = req.body as TenantConfig
@@ -68,7 +68,7 @@ router.put("/:orgSlug/config", authenticateJWT, requireAdmin, async (req: Reques
  * Admin or Creator generates a complete domain-agnostic exam using AI from a prompt,
  * question criteria, or uploaded doc snippet.
  */
-router.post("/:orgSlug/generate-exam", authenticateJWT, requireAdmin, async (req: Request, res: Response) => {
+router.post("/:orgSlug/generate-exam", authenticateJWT, requireAdmin, requireOrgOwnership, async (req: Request, res: Response) => {
   const { prompt, domain, seniority, assessmentType, allowedLanguages, docText } = req.body
 
   if (!prompt && !docText) {
@@ -96,7 +96,7 @@ router.post("/:orgSlug/generate-exam", authenticateJWT, requireAdmin, async (req
 /**
  * GET /api/org/:orgSlug/sessions
  */
-router.get("/:orgSlug/sessions", authenticateJWT, requireAdmin, async (req: Request, res: Response) => {
+router.get("/:orgSlug/sessions", authenticateJWT, requireAdmin, requireOrgOwnership, async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
   try {
@@ -110,7 +110,7 @@ router.get("/:orgSlug/sessions", authenticateJWT, requireAdmin, async (req: Requ
 /**
  * GET /api/org/:orgSlug/students
  */
-router.get("/:orgSlug/students", authenticateJWT, requireAdmin, async (req: Request, res: Response) => {
+router.get("/:orgSlug/students", authenticateJWT, requireAdmin, requireOrgOwnership, async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
   try {

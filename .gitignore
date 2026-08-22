@@ -43,3 +43,6 @@ Thumbs.db
 
 # Vercel / Render
 .vercel/
+
+# Uploaded files
+backend/uploads/

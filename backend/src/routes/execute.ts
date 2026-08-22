@@ -3,10 +3,11 @@ import { hasDatabase, recordAgentEvent, recordCodeSnapshot } from "../lib/db.js"
 import { deriveCodeState } from "../lib/examStateManager.js"
 import { validate, ExecuteRequestSchema } from "../middleware/validation.js"
 import { executeSandbox } from "../tools/sandboxTool.js"
+import { authenticateJWT } from "../middleware/authMiddleware.js"
 
 const router = Router()
 
-router.post("/", validate(ExecuteRequestSchema), async (req: Request, res: Response) => {
+router.post("/", authenticateJWT, validate(ExecuteRequestSchema), async (req: Request, res: Response) => {
   const { code, language, sessionId } = req.body
 
   try {

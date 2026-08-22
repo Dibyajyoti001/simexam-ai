@@ -3,6 +3,7 @@ import { runAgentLoop } from "../agents/agentLoop.js"
 import { getTenantConfigBySlug, hasDatabase } from "../lib/db.js"
 import { AgentTrigger } from "../types/index.js"
 import { createInitialExamState } from "../lib/examStateManager.js"
+import { authenticateJWT } from "../middleware/authMiddleware.js"
 
 const router = Router()
 
@@ -10,7 +11,7 @@ const router = Router()
  * POST /api/agent
  * Accepts a proactive agent trigger and returns the collected response as JSON.
  */
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", authenticateJWT, async (req: Request, res: Response) => {
   const { type, action, sessionId, orgSlug, examState } = req.body
 
   if (!action || !sessionId) {

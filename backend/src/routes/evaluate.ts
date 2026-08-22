@@ -3,6 +3,8 @@ import { getTenantConfigBySlug, hasDatabase, recordEvaluation, recordAgentEvent,
 import { validate, EvaluateRequestSchema } from "../middleware/validation.js"
 import { pythonEvaluate } from "../tools/pythonBridge.js"
 import { EvaluateRequestBody } from "../types/index.js"
+import { authenticateJWT } from "../middleware/authMiddleware.js"
+import vm from "node:vm"
 
 const router = Router()
 
@@ -41,7 +43,15 @@ try {
   'ERR:' + e.message;
 }
 `
-      const resultStr = String(eval(harness) || "")
+      // Sandboxed execution — no access to process, require, fs, etc.
+      const sandbox: Record<string, any> = {
+        JSON, Math, Array, Object, String, Number, Boolean,
+        Map, Set, parseInt, parseFloat, isNaN, isFinite,
+        undefined, NaN, Infinity,
+        console: { log: () => {}, warn: () => {}, error: () => {} },
+      }
+      const vmContext = vm.createContext(sandbox)
+      const resultStr = String(vm.runInNewContext(harness, vmContext, { timeout: 5000 }) || "")
       if (resultStr.replace(/\s+/g, '') === expectedStr.replace(/\s+/g, '') || (!resultStr.startsWith("ERR:") && resultStr !== "undefined")) {
         passed++
       }
@@ -53,7 +63,7 @@ try {
   return { passed, total: testCases.length }
 }
 
-router.post("/", validate(EvaluateRequestSchema), async (req: Request, res: Response) => {
+router.post("/", authenticateJWT, validate(EvaluateRequestSchema), async (req: Request, res: Response) => {
   const body = req.body as EvaluateRequestBody
 
   if (!body.conversationHistory || !body.studentName) {

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express"
 import { JWTPayload } from "../types/index.js"
+import { hasDatabase, dbQuery } from "../lib/db.js"
 
 // Extend Express Request to carry user payload
 declare global {
@@ -11,6 +12,10 @@ declare global {
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || "simexam-dev-secret-change-me"
+
+if (JWT_SECRET === "simexam-dev-secret-change-me") {
+  console.warn("[Auth] \u26a0\ufe0f  Using default JWT_SECRET \u2014 set JWT_SECRET env var in production")
+}
 
 // ── Dynamic imports (these packages may not be installed yet) ─────
 
@@ -111,6 +116,50 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 /**
+ * Verifies the authenticated admin's orgId matches the :orgSlug in the URL.
+ * Prevents cross-tenant access (IDOR). Must be used after authenticateJWT + requireAdmin.
+ */
+export function requireOrgOwnership(req: Request, res: Response, next: NextFunction): void {
+  if (process.env.ENABLE_AUTH === "false") {
+    next()
+    return
+  }
+
+  if (!req.user) {
+    res.status(401).json({ error: "Authentication required" })
+    return
+  }
+
+  const orgSlug = req.params.orgSlug
+  if (!orgSlug) {
+    next()
+    return
+  }
+
+  if (!hasDatabase()) {
+    next()
+    return
+  }
+
+  ;(async () => {
+    try {
+      const result = await dbQuery<{ id: string }>("SELECT id FROM orgs WHERE slug = $1", [orgSlug])
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: "Organization not found" })
+        return
+      }
+      if (result.rows[0].id !== req.user!.orgId) {
+        res.status(403).json({ error: "You do not have access to this organization" })
+        return
+      }
+      next()
+    } catch (err) {
+      next(err)
+    }
+  })()
+}
+
+/**
  * Allows students to access only their own session, or admins to access any
  * session within their org.
  */
@@ -126,18 +175,49 @@ export function requireStudentAccess(req: Request, res: Response, next: NextFunc
   }
 
   if (req.user.role === "admin") {
-    // Admins can access anything (IDOR check is done by requireSessionOwner)
     next()
     return
   }
 
   if (req.user.role === "student") {
     const sessionId = req.params.sessionId || req.body?.sessionId
-    if (sessionId && req.user.sessionId !== sessionId) {
-      res.status(403).json({ error: "You can only access your own session" })
+    if (!sessionId) {
+      next()
       return
     }
-    next()
+
+    if (!hasDatabase()) {
+      next()
+      return
+    }
+
+    // DB-backed ownership check instead of relying on JWT sessionId (which was never set)
+    ;(async () => {
+      try {
+        const result = await dbQuery<{ student_id: string | null; org_id: string }>(
+          "SELECT student_id, org_id FROM sessions WHERE id = $1",
+          [sessionId]
+        )
+        if (result.rows.length === 0) {
+          res.status(404).json({ error: "Session not found" })
+          return
+        }
+        const session = result.rows[0]
+        // If session has a linked student, it must match the authenticated user
+        if (session.student_id && session.student_id !== req.user!.userId) {
+          res.status(403).json({ error: "You can only access your own session" })
+          return
+        }
+        // Org-level check: student must belong to the session's org
+        if (session.org_id !== req.user!.orgId) {
+          res.status(403).json({ error: "You can only access sessions in your organization" })
+          return
+        }
+        next()
+      } catch (err) {
+        next(err)
+      }
+    })()
     return
   }
 

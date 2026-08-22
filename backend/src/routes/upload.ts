@@ -161,6 +161,12 @@ router.post(
           resolvedOrgUuid = fallbackOrg.rows[0].id
         }
 
+        // Org ownership check: authenticated user can only upload to their own org
+        if (process.env.ENABLE_AUTH !== "false" && req.user?.orgId && resolvedOrgUuid !== req.user.orgId) {
+          fs.unlinkSync(verifiedFilePath)
+          return res.status(403).json({ error: "You can only upload to your own organization" })
+        }
+
         const validSessionUuid = sessionId && sessionId.length === 36 ? sessionId : null
 
         const result = await dbQuery<{ id: string }>(

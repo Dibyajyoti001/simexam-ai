@@ -1,5 +1,3 @@
-"use client"
-
 import { Trash2, TerminalSquare } from "lucide-react"
 import { useEffect, useRef } from "react"
 import { TerminalOutput } from "../types/index"

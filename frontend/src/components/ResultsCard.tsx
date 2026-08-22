@@ -1,5 +1,3 @@
-"use client"
-
 import { ArrowRight, CheckCircle2, Lightbulb } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 

@@ -1,5 +1,3 @@
-"use client"
-
 import { Send, Sparkles, UserRound } from "lucide-react"
 import { useEffect, useMemo, useRef } from "react"
 import { ChatMessage } from "../types/index"

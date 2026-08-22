@@ -6,17 +6,20 @@ import {
   Save,
   Trash2,
   X,
+  Sparkles,
+  Wand2,
+  Code2,
+  LayoutPanelLeft,
+  PenTool,
+  Loader2,
 } from "lucide-react"
-import { fetchTenantConfig, saveTenantConfig, uploadFile } from "../../lib/api"
+import { fetchTenantConfig, saveTenantConfig, generateAIExam } from "../../lib/api"
 import { TenantShell } from "../../components/TenantShell"
+import { FileUploadPanel } from "../../components/FileUploadPanel"
 import { Button } from "../../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card"
 import type { RubricDimension, TenantConfig, TestCase } from "../../types/index"
 import { fallbackTenantConfig } from "../../hooks/useTenantConfig"
-
-function SectionDivider() {
-  return <div className="my-6 border-t border-white/[0.06]" />
-}
 
 function Label({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
   return (
@@ -83,7 +86,17 @@ function Textarea({
   )
 }
 
-const LANGUAGE_OPTIONS = ["javascript", "typescript", "python", "java"] as const
+const DOMAIN_PRESETS = [
+  "Backend & APIs",
+  "Frontend & UI Architecture",
+  "System Design & Scalability",
+  "Cloud & DevOps Infrastructure",
+  "Machine Learning & Data Engineering",
+  "Cybersecurity & Threat Modeling",
+  "Product Management & System Specs",
+]
+
+const LANGUAGE_OPTIONS = ["javascript", "typescript", "python", "java", "go", "cpp"] as const
 
 export default function AdminConfigPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>()
@@ -93,6 +106,14 @@ export default function AdminConfigPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
+  // AI Generator Modal state
+  const [showAiModal, setShowAiModal] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState("")
+  const [aiDomain, setAiDomain] = useState("Backend & APIs")
+  const [aiSeniority, setAiSeniority] = useState("Senior")
+  const [aiType, setAiType] = useState<"coding" | "system_design" | "conceptual">("coding")
+  const [generating, setGenerating] = useState(false)
 
   useEffect(() => {
     if (!orgSlug) return
@@ -132,13 +153,53 @@ export default function AdminConfigPage() {
     setSaving(true)
     try {
       await saveTenantConfig(orgSlug, config)
-      setToast({ type: "success", text: "Config saved" })
+      setToast({ type: "success", text: "Configuration saved and published!" })
     } catch {
       setToast({ type: "error", text: "Failed to save config" })
     } finally {
       setSaving(false)
     }
   }, [orgSlug, config, saving])
+
+  const handleGenerateAI = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!aiPrompt.trim() || !orgSlug) return
+    setGenerating(true)
+    try {
+      const result = await generateAIExam(orgSlug, {
+        prompt: aiPrompt,
+        domain: aiDomain,
+        seniority: aiSeniority,
+        assessmentType: aiType,
+        allowedLanguages: config.exam.allowedLanguages,
+      })
+
+      if (result.exam) {
+        setConfig((prev) => ({
+          ...prev,
+          exam: {
+            ...prev.exam,
+            ...result.exam,
+            type: aiType,
+          },
+          agent: {
+            ...prev.agent,
+            ...(result.agent || {}),
+          },
+          rubric: {
+            ...prev.rubric,
+            ...(result.rubric || {}),
+          },
+        }))
+        setShowAiModal(false)
+        setToast({ type: "success", text: "✨ AI Assessment generated and populated!" })
+      }
+    } catch (err: any) {
+      setToast({ type: "error", text: err.message || "AI generation failed" })
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   // Rubric helpers
   const addDimension = () => {
@@ -212,39 +273,6 @@ export default function AdminConfigPage() {
     }))
   }
 
-  // Knowledge base URL helpers
-  const addUrl = () => {
-    setConfig((prev) => ({
-      ...prev,
-      exam: {
-        ...prev.exam,
-        knowledgeBaseUrls: [...prev.exam.knowledgeBaseUrls, ""],
-      },
-    }))
-  }
-
-  const removeUrl = (index: number) => {
-    setConfig((prev) => ({
-      ...prev,
-      exam: {
-        ...prev.exam,
-        knowledgeBaseUrls: prev.exam.knowledgeBaseUrls.filter((_, i) => i !== index),
-      },
-    }))
-  }
-
-  const updateUrl = (index: number, value: string) => {
-    setConfig((prev) => ({
-      ...prev,
-      exam: {
-        ...prev.exam,
-        knowledgeBaseUrls: prev.exam.knowledgeBaseUrls.map((u, i) =>
-          i === index ? value : u
-        ),
-      },
-    }))
-  }
-
   if (loading) {
     return (
       <TenantShell orgSlug={orgSlug ?? "demo"}>
@@ -257,7 +285,7 @@ export default function AdminConfigPage() {
 
   return (
     <TenantShell orgSlug={orgSlug ?? "demo"}>
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8 font-sans">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
@@ -272,17 +300,49 @@ export default function AdminConfigPage() {
               <p className="mt-0.5 text-xs text-zinc-500">{config.branding.name}</p>
             </div>
           </div>
-          <Button onClick={handleSave} disabled={saving}>
-            <Save size={15} />
-            {saving ? "Saving…" : "Save Config"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setShowAiModal(true)}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.3)]"
+            >
+              <Sparkles size={15} />
+              AI Exam Generator
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              <Save size={15} />
+              {saving ? "Saving…" : "Save Config"}
+            </Button>
+          </div>
         </div>
 
-        {/* Toast */}
+        {/* AI Generator Banner */}
+        <div className="mt-6 rounded-2xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/40 via-purple-950/20 to-zinc-950/40 p-5 backdrop-blur-md">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-indigo-300 font-semibold text-sm">
+                <Wand2 size={16} />
+                <span>Domain-Agnostic AI Assessment Engine</span>
+              </div>
+              <p className="text-xs text-zinc-400 max-w-2xl">
+                Automatically generate full technical challenges, Socratic interviewer personas, dynamic mid-exam curveballs, and 4D evaluation rubrics from a prompt or uploaded documents.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowAiModal(true)}
+              className="border-indigo-400/30 bg-indigo-500/10 text-indigo-200 hover:bg-indigo-500/20 text-xs shrink-0"
+            >
+              <Sparkles size={14} className="mr-1.5" />
+              Generate with AI
+            </Button>
+          </div>
+        </div>
+
+        {/* Toast Notification */}
         {toast && (
           <div
             className={[
-              "mt-4 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-all duration-200",
+              "mt-4 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-all duration-200 animate-fade-up",
               toast.type === "success"
                 ? "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-200"
                 : "border-red-500/20 bg-red-500/[0.06] text-red-200",
@@ -296,19 +356,62 @@ export default function AdminConfigPage() {
         )}
 
         <div className="mt-6 space-y-5">
-          {/* Section 1: Exam Details */}
+          {/* Section 1: Assessment Type & Details */}
           <Card className="border-white/10 bg-white/[0.035]">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Exam Details</CardTitle>
+              <CardTitle className="text-lg">Assessment Format & Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Assessment Type Selector */}
               <div>
-                <Label htmlFor="title">Title</Label>
+                <Label>Assessment Type</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => update("exam", { type: "coding" })}
+                    className={`flex items-center justify-center gap-2 rounded-xl border p-3 text-xs font-medium transition-all ${
+                      config.exam.type === "coding" || !config.exam.type
+                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-300 shadow-sm"
+                        : "border-white/10 bg-white/[0.02] text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <Code2 size={15} />
+                    Live Coding Simulation
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => update("exam", { type: "system_design" })}
+                    className={`flex items-center justify-center gap-2 rounded-xl border p-3 text-xs font-medium transition-all ${
+                      config.exam.type === "system_design"
+                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-300 shadow-sm"
+                        : "border-white/10 bg-white/[0.02] text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <LayoutPanelLeft size={15} />
+                    System Design Whiteboard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => update("exam", { type: "conceptual" })}
+                    className={`flex items-center justify-center gap-2 rounded-xl border p-3 text-xs font-medium transition-all ${
+                      config.exam.type === "conceptual"
+                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-300 shadow-sm"
+                        : "border-white/10 bg-white/[0.02] text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <PenTool size={15} />
+                    Conceptual / Essay
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="title">Assessment Title</Label>
                 <Input
                   id="title"
                   value={config.exam.title}
                   onChange={(v) => update("exam", { title: v })}
-                  placeholder="e.g. Production Sort Assessment"
+                  placeholder="e.g. Distributed Cache & High-Throughput Pipeline"
                 />
               </div>
               <div>
@@ -316,25 +419,25 @@ export default function AdminConfigPage() {
                 <Textarea
                   value={config.exam.description ?? ""}
                   onChange={(v) => update("exam", { description: v })}
-                  placeholder="Brief description for students"
+                  placeholder="Brief description for candidates"
                 />
               </div>
               <div>
-                <Label>Problem Statement</Label>
+                <Label>Problem Statement & Specifications</Label>
                 <Textarea
                   value={config.exam.problemStatement}
                   onChange={(v) => update("exam", { problemStatement: v })}
-                  placeholder="The problem statement shown to students"
+                  placeholder="The detailed problem statement shown to candidates..."
                   mono
-                  rows={4}
+                  rows={5}
                 />
               </div>
               <div>
-                <Label>Starter Code</Label>
+                <Label>Starter Code / Template</Label>
                 <Textarea
                   value={config.exam.starterCode}
                   onChange={(v) => update("exam", { starterCode: v })}
-                  placeholder="// starter code..."
+                  placeholder="// Starter boilerplate..."
                   mono
                   rows={8}
                 />
@@ -351,14 +454,14 @@ export default function AdminConfigPage() {
             </CardContent>
           </Card>
 
-          {/* Section 2: Curveball */}
+          {/* Section 2: Dynamic Curveball Constraint */}
           <Card className="border-white/10 bg-white/[0.035]">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Curveball</CardTitle>
+              <CardTitle className="text-lg">Dynamic Mid-Exam Curveball</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="curveballAt">Curveball Timing (seconds after start)</Label>
+                <Label htmlFor="curveballAt">Trigger Timing (seconds after start)</Label>
                 <Input
                   id="curveballAt"
                   type="number"
@@ -367,17 +470,17 @@ export default function AdminConfigPage() {
                 />
               </div>
               <div>
-                <Label>Curveball Message</Label>
+                <Label>Constraint Change Message</Label>
                 <Textarea
                   value={config.exam.curveballMessage ?? ""}
                   onChange={(v) => update("exam", { curveballMessage: v })}
-                  placeholder="The constraint change message..."
+                  placeholder="e.g. Product requirement update: memory is now limited to 128MB, must be O(N log N)..."
                 />
               </div>
             </CardContent>
           </Card>
 
-          {/* Section 3: Languages */}
+          {/* Section 3: Allowed Languages */}
           <Card className="border-white/10 bg-white/[0.035]">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">Allowed Languages</CardTitle>
@@ -408,15 +511,15 @@ export default function AdminConfigPage() {
             </CardContent>
           </Card>
 
-          {/* Section 4: Agent Persona */}
+          {/* Section 4: Socratic AI Interviewer Persona */}
           <Card className="border-white/10 bg-white/[0.035]">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Agent Persona</CardTitle>
+              <CardTitle className="text-lg">Socratic AI Interviewer Persona</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <Label htmlFor="personaName">Name</Label>
+                  <Label htmlFor="personaName">Interviewer Name</Label>
                   <Input
                     id="personaName"
                     value={config.agent.personaName}
@@ -425,53 +528,50 @@ export default function AdminConfigPage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="personaRole">Role</Label>
+                  <Label htmlFor="personaRole">Interviewer Role</Label>
                   <Input
                     id="personaRole"
                     value={config.agent.personaRole}
                     onChange={(v) => update("agent", { personaRole: v })}
-                    placeholder="Senior Engineer"
+                    placeholder="Principal Systems Architect"
                   />
                 </div>
               </div>
               <div>
-                <Label>System Prompt Additions</Label>
+                <Label>System Prompt Instructions & Focus Areas</Label>
                 <Textarea
                   value={config.agent.systemPromptAdditions ?? ""}
                   onChange={(v) => update("agent", { systemPromptAdditions: v })}
-                  placeholder="Additional instructions for the AI persona..."
+                  placeholder="Specialized instructions for the Socratic AI interviewer..."
                   rows={3}
                 />
               </div>
             </CardContent>
           </Card>
 
-          {/* Section 5: Rubric */}
+          {/* Section 5: Evaluation Rubric */}
           <Card className="border-white/10 bg-white/[0.035]">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Rubric Dimensions</CardTitle>
+                <CardTitle className="text-lg">Evaluation Rubric Dimensions</CardTitle>
                 <Button variant="ghost" onClick={addDimension}>
                   <Plus size={14} />
-                  Add
+                  Add Dimension
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {config.rubric.dimensions.map((dim, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl border border-white/8 bg-white/[0.02] p-4"
-                >
+                <div key={i} className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 space-y-3">
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
-                          <Label>Name</Label>
+                          <Label>Dimension Name</Label>
                           <Input
                             value={dim.name}
                             onChange={(v) => updateDimension(i, { name: v })}
-                            placeholder="Dimension name"
+                            placeholder="e.g. Technical Accuracy"
                           />
                         </div>
                         <div>
@@ -497,11 +597,11 @@ export default function AdminConfigPage() {
                         </div>
                       </div>
                       <div>
-                        <Label>Description</Label>
+                        <Label>Evaluation Criteria</Label>
                         <Input
                           value={dim.description}
                           onChange={(v) => updateDimension(i, { description: v })}
-                          placeholder="What this dimension measures"
+                          placeholder="What this dimension evaluates"
                         />
                       </div>
                     </div>
@@ -524,16 +624,13 @@ export default function AdminConfigPage() {
                 <CardTitle className="text-lg">Test Cases</CardTitle>
                 <Button variant="ghost" onClick={addTestCase}>
                   <Plus size={14} />
-                  Add
+                  Add Test Case
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {config.exam.testCases.map((tc, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl border border-white/8 bg-white/[0.02] p-4"
-                >
+                <div key={i} className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 space-y-3">
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -573,7 +670,7 @@ export default function AdminConfigPage() {
                           onChange={(e) => updateTestCase(i, { hidden: e.target.checked })}
                           className="h-3.5 w-3.5 rounded border-white/20 bg-zinc-900 accent-indigo-500"
                         />
-                        Hidden (not shown to student)
+                        Hidden Test (used for grading only)
                       </label>
                     </div>
                     <button
@@ -588,109 +685,122 @@ export default function AdminConfigPage() {
             </CardContent>
           </Card>
 
-          {/* Section 7: Knowledge Base */}
-          <Card className="border-white/10 bg-white/[0.035]">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Knowledge Base URLs</CardTitle>
-                <Button variant="ghost" onClick={addUrl}>
-                  <Plus size={14} />
-                  Add
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {config.exam.knowledgeBaseUrls.map((url, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Input
-                    value={url}
-                    onChange={(v) => updateUrl(i, v)}
-                    placeholder="https://docs.example.com/..."
-                  />
-                  <button
-                    onClick={() => removeUrl(i)}
-                    className="text-zinc-600 transition-colors hover:text-red-400"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-              {config.exam.knowledgeBaseUrls.length === 0 && (
-                <p className="text-xs text-zinc-600">No URLs added yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Section 8: Knowledge Base Files */}
-          <Card className="border-white/10 bg-white/[0.035]">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Knowledge Base Files</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="kbUpload">Upload File</Label>
-                <input
-                  id="kbUpload"
-                  type="file"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    try {
-                      await uploadFile(file, config.orgId)
-                      setToast({ type: "success", text: "File uploaded successfully" })
-                    } catch (err) {
-                      setToast({ type: "error", text: "Upload failed" })
-                    }
-                  }}
-                  className="block w-full text-sm text-zinc-400 file:mr-4 file:rounded-full file:border-0 file:bg-indigo-500/10 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-400 hover:file:bg-indigo-500/20"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Section 9: Branding */}
-          <Card className="border-white/10 bg-white/[0.035]">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Branding</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="primaryColor">Primary Color</Label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      id="primaryColor"
-                      type="color"
-                      value={config.branding.primaryColor}
-                      onChange={(e) => update("branding", { primaryColor: e.target.value })}
-                      className="h-9 w-12 cursor-pointer rounded-lg border border-white/10 bg-transparent"
-                    />
-                    <span className="font-mono text-xs text-zinc-400">
-                      {config.branding.primaryColor}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="logoUrl">Logo URL</Label>
-                  <Input
-                    id="logoUrl"
-                    value={config.branding.logoUrl ?? ""}
-                    onChange={(v) => update("branding", { logoUrl: v })}
-                    placeholder="https://example.com/logo.svg"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Section 7: Knowledge Base Files */}
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-zinc-300">Knowledge Base Files (RAG Context)</h3>
+            <FileUploadPanel
+              orgId={config.orgId || orgSlug || "demo"}
+              onUploadComplete={() => {
+                setToast({ type: "success", text: "Knowledge base document processed and indexed for RAG" })
+              }}
+            />
+          </div>
         </div>
 
         {/* Bottom save */}
         <div className="mt-8 flex justify-end">
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving} className="px-6 h-11">
             <Save size={15} />
-            {saving ? "Saving…" : "Save Config"}
+            {saving ? "Saving…" : "Save Configuration"}
           </Button>
         </div>
+
+        {/* ─── AI Exam Generator Modal ─── */}
+        {showAiModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md px-4">
+            <div className="w-full max-w-lg rounded-2xl border border-indigo-500/30 bg-zinc-950 p-6 shadow-2xl space-y-5 animate-fade-up">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-indigo-400 font-semibold text-lg">
+                  <Sparkles size={20} />
+                  <span>Generate Assessment with AI</span>
+                </div>
+                <button onClick={() => setShowAiModal(false)} className="text-zinc-500 hover:text-zinc-300">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleGenerateAI} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Target Domain</label>
+                  <select
+                    value={aiDomain}
+                    onChange={(e) => setAiDomain(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-indigo-400"
+                  >
+                    {DOMAIN_PRESETS.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1.5">Seniority Level</label>
+                    <select
+                      value={aiSeniority}
+                      onChange={(e) => setAiSeniority(e.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-indigo-400"
+                    >
+                      <option value="Junior">Junior Engineer</option>
+                      <option value="Mid-Level">Mid-Level Engineer</option>
+                      <option value="Senior">Senior Engineer</option>
+                      <option value="Staff / Lead">Staff / Principal Architect</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1.5">Format</label>
+                    <select
+                      value={aiType}
+                      onChange={(e) => setAiType(e.target.value as any)}
+                      className="w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-indigo-400"
+                    >
+                      <option value="coding">Live Coding Assessment</option>
+                      <option value="system_design">System Design Whiteboard</option>
+                      <option value="conceptual">Conceptual / Essay</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                    Describe the Challenge / Topic / Scenario *
+                  </label>
+                  <textarea
+                    required
+                    rows={4}
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="e.g. Build a high-throughput rate-limiting middleware in Redis and Node.js. Inject a mid-exam curveball where Redis goes down and memory fallback is required."
+                    className="w-full rounded-xl border border-white/10 bg-zinc-900 p-3 text-sm text-zinc-100 outline-none focus:border-indigo-400 resize-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="ghost" onClick={() => setShowAiModal(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={generating || !aiPrompt.trim()}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white min-w-[160px]"
+                  >
+                    {generating ? (
+                      <>
+                        <Loader2 size={15} className="mr-2 animate-spin" />
+                        Designing Exam...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={15} className="mr-1.5" />
+                        Generate Suite
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </TenantShell>
   )

@@ -202,8 +202,14 @@ async function buildMessagesFromTrigger(trigger: AgentTrigger): Promise<GeminiMe
   return messages
 }
 
+/**
+ * Extract the student's name from the trigger.
+ * Falls back to "Candidate" only if no name is available.
+ */
 function extractStudentName(trigger: AgentTrigger): string {
-  // Fall back to a generic name if not provided via tenant
+  // Prefer name passed directly on the trigger (set by chat route from request body)
+  if (trigger.studentName) return trigger.studentName
+  // Fall back to tenant-level default (useful for proactive triggers)
   return "Candidate"
 }
 

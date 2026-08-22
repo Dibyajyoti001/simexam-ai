@@ -180,6 +180,7 @@ export interface AgentTrigger {
   tenantConfig: TenantConfig
   proactiveAction?: ProactiveActionType
   assessmentType?: AssessmentType
+  studentName?: string
 }
 
 export interface ToolResult {

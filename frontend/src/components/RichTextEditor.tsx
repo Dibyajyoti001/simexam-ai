@@ -7,21 +7,29 @@ interface RichTextEditorProps {
   value: string
   onChange: (val: string) => void
   onSubmit?: () => void
+  sessionId?: string | null
+  orgSlug?: string
 }
 
-export function RichTextEditor({ value, onChange, onSubmit }: RichTextEditorProps) {
+export function RichTextEditor({ value, onChange, onSubmit: _onSubmit, sessionId, orgSlug }: RichTextEditorProps) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const resetTimeout = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(() => {
+      if (!sessionId) return
       fetch(`${BACKEND_URL}/api/agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'proactive', action: 'SILENCE_TIMEOUT' })
+        body: JSON.stringify({
+          type: 'proactive',
+          action: 'SILENCE_TIMEOUT',
+          sessionId,
+          orgSlug: orgSlug || 'default',
+        })
       }).catch(err => console.error("Proactive agent error", err))
     }, 60000)
-  }, [])
+  }, [sessionId, orgSlug])
 
   useEffect(() => {
     resetTimeout()
@@ -31,9 +39,9 @@ export function RichTextEditor({ value, onChange, onSubmit }: RichTextEditorProp
   }, [resetTimeout])
 
   const handleChange = useCallback((val: string) => {
-    onChange(val);
-    resetTimeout();
-  }, [onChange, resetTimeout]);
+    onChange(val)
+    resetTimeout()
+  }, [onChange, resetTimeout])
 
   return (
     <div className="flex h-full flex-col rounded-3xl border border-white/10 bg-[#161618] overflow-hidden">
@@ -44,7 +52,7 @@ export function RichTextEditor({ value, onChange, onSubmit }: RichTextEditorProp
             <div className="h-3 w-3 rounded-full bg-amber-500/80" />
             <div className="h-3 w-3 rounded-full bg-emerald-500/80" />
           </div>
-          <span className="text-xs font-medium text-zinc-400">Essay Editor</span>
+          <span className="text-xs font-medium text-zinc-400">Essay & Conceptual Workspace</span>
         </div>
       </div>
       
@@ -55,7 +63,7 @@ export function RichTextEditor({ value, onChange, onSubmit }: RichTextEditorProp
           options={{
             spellChecker: false,
             status: false,
-            placeholder: "Write your answer here... Markdown is supported.",
+            placeholder: "Write your structured response here... Markdown formatting is supported.",
           }}
         />
       </div>

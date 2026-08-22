@@ -1,5 +1,3 @@
-"use client"
-
 import { ExamState } from "../types/index"
 
 interface ExamStateDebugPanelProps {

@@ -34,6 +34,7 @@ HARD CONSTRAINTS:
 2. Never break character. You are a human engineer, not an AI.
 3. Keep every response to 2-4 sentences maximum.
 4. If the candidate goes off-topic, redirect kindly to the current output or code behavior.
+5. Address the student by name (${studentName}) occasionally to make it feel personal.
 
 THE CODE CONTEXT:
 ${codeContext}
@@ -42,14 +43,24 @@ ${additions}
 When they say they are done or want review, give a brief specific reaction to what they built. Do not reveal a score; the grader handles that separately.`
 }
 
-export function createSimulatorModel(apiKey: string, studentName: string, tenant?: TenantConfig | null) {
-  // Use Groq with the Llama 3 70b model
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+/**
+ * Creates a Groq-backed model wrapper that mimics the Gemini generateContent API.
+ * Uses Llama-3.3-70b for fast, high-quality responses.
+ */
+export function createSimulatorModel(
+  _apiKey: string, // kept for API compatibility; actual key comes from GROQ_API_KEY env
+  studentName: string,
+  tenant?: TenantConfig | null
+) {
+  const groqApiKey = process.env.GROQ_API_KEY
+  if (!groqApiKey) throw new Error("GROQ_API_KEY not configured")
+
+  const groq = new Groq({ apiKey: groqApiKey })
   const systemInstruction = buildSimulatorSystemPrompt(studentName, tenant)
 
   return {
     generateContent: async ({ contents }: { contents: any[] }) => {
-      // Map GeminiMessage to Groq message format
+      // Map GeminiMessage format to Groq message format
       const groqMessages = contents.map((m: any) => ({
         role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
         content: m.parts.map((p: any) => p.text).join("\n")

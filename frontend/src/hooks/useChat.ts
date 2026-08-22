@@ -1,5 +1,3 @@
-"use client"
-
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ChatMessage, ExamState, GeminiMessage, TenantConfig } from "../types/index"
 import { CURVEBALL_MESSAGE, SESSION_KEYS, SIMULATOR_OPENING_MESSAGE } from "../lib/constants"
@@ -89,12 +87,12 @@ export function useChat(studentName: string, options: {
     const curveballMsg: ChatMessage = {
       id: generateId(),
       role: "pm",
-      content: CURVEBALL_MESSAGE,
+      content: options.tenant?.exam?.curveballMessage || CURVEBALL_MESSAGE,
       timestamp: Date.now(),
     }
 
     setMessages((prev) => [...prev, curveballMsg])
-  }, [curveballFired])
+  }, [curveballFired, options.tenant?.exam?.curveballMessage])
 
   const sendMessage = useCallback(
     async (userText: string, examState: ExamState, currentCode: string) => {
@@ -167,23 +165,26 @@ export function useChat(studentName: string, options: {
         }
       )
     },
-    [isTyping, options.orgSlug, options.sessionId, recordCodeSnapshot, studentName]
+    [isTyping, options.assessmentType, options.orgSlug, options.sessionId, recordCodeSnapshot, studentName]
   )
 
   const buildTranscript = useCallback(() => {
+    const personaName = options.tenant?.agent?.personaName || "Alex Chen"
+    const personaRole = options.tenant?.agent?.personaRole || "Interviewer"
+
     return messagesRef.current
       .map((message) => {
         const label =
           message.role === "student"
             ? `Student (${studentName})`
             : message.role === "simulator"
-              ? "Senior Dev (Alex Chen)"
-              : "PM (Alex)"
+              ? `${personaRole} (${personaName})`
+              : "PM (Constraint Update)"
 
         return `${label}: ${message.content}`
       })
       .join("\n\n")
-  }, [studentName])
+  }, [options.tenant?.agent?.personaName, options.tenant?.agent?.personaRole, studentName])
 
   return {
     messages,

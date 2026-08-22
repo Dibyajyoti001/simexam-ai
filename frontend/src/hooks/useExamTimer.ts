@@ -17,6 +17,9 @@ export function useExamTimer({
   durationSeconds = EXAM_DURATION_SECONDS,
   curveballAtSeconds = CURVEBALL_TRIGGER_SECONDS,
 }: UseExamTimerOptions) {
+  // Track the duration we were initialised with so we can reset if a real config loads
+  const initialisedWithRef = useRef<number | null>(null)
+
   const [secondsLeft, setSecondsLeft] = useState(durationSeconds)
   const [running, setRunning] = useState(autoStart)
   const [curveballFired, setCurveballFired] = useState(false)
@@ -32,6 +35,28 @@ export function useExamTimer({
   useEffect(() => {
     onExpireRef.current = onExpire
   }, [onExpire])
+
+  /**
+   * Fix: if the timer was started with the fallback duration (3600) and a real
+   * durationSeconds from tenant config arrives that is meaningfully different,
+   * reset the timer to the real value. This handles the async tenant config load race.
+   */
+  useEffect(() => {
+    if (initialisedWithRef.current === null) {
+      // First mount — record what we started with
+      initialisedWithRef.current = durationSeconds
+      setSecondsLeft(durationSeconds)
+    } else if (
+      initialisedWithRef.current !== durationSeconds &&
+      initialisedWithRef.current === EXAM_DURATION_SECONDS
+    ) {
+      // We started with the fallback, but a real duration is now available
+      initialisedWithRef.current = durationSeconds
+      setSecondsLeft(durationSeconds)
+      curveballRef.current = false
+      setCurveballFired(false)
+    }
+  }, [durationSeconds])
 
   useEffect(() => {
     if (!running) return
@@ -61,6 +86,7 @@ export function useExamTimer({
     return () => window.clearInterval(interval)
   }, [curveballAtSeconds, durationSeconds, running])
 
+  // Note: Shift+D debug shortcut is handled ONLY here (removed from workspace page to avoid double-firing)
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.shiftKey && event.key.toLowerCase() === "d" && !curveballRef.current) {

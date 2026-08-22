@@ -1,5 +1,3 @@
-"use client"
-
 import { Clock3, TimerReset } from "lucide-react"
 import { formatTime } from "../lib/utils"
 import { Badge } from "./ui/badge"

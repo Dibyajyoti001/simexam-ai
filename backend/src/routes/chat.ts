@@ -9,6 +9,7 @@ const router = Router()
 
 /**
  * POST /api/chat
+ * Streams AI agent responses back via SSE.
  */
 router.post("/", validate(ChatRequestSchema), async (req: Request, res: Response) => {
   const { messages, studentName, examState, sessionId, orgSlug, assessmentType } = req.body
@@ -24,7 +25,7 @@ router.post("/", validate(ChatRequestSchema), async (req: Request, res: Response
   res.setHeader("X-Accel-Buffering", "no")
 
   try {
-    // Load tenant
+    // Load tenant config from DB if available
     let tenantConfig = null
     if (orgSlug && hasDatabase()) {
       try {
@@ -72,11 +73,13 @@ router.post("/", validate(ChatRequestSchema), async (req: Request, res: Response
       code: codeMatch,
       examState: examState || createInitialExamState(),
       tenantConfig,
-      assessmentType
+      assessmentType,
+      studentName: studentName || "Candidate", // ← forward student name to agent
     }
 
+    // agentLoop already stringifies chunks as JSON — just wrap in SSE format
     const streamCallback = (chunk: string) => {
-      res.write(`data: ${JSON.stringify({ text: chunk, source: "llm" })}\n\n`)
+      res.write(`data: ${chunk}\n\n`)
     }
 
     await runAgentLoop(trigger, streamCallback)

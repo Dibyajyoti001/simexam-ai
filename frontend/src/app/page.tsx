@@ -1,5 +1,3 @@
-"use client"
-
 import {
   ArrowRight,
   Code2,
@@ -7,12 +5,13 @@ import {
   MessageSquareText,
   Sparkles,
 } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
 import { Card, CardContent } from "../components/ui/card"
-import { navigateTo } from "../lib/navigation"
 
 export default function LandingPage() {
+  const navigate = useNavigate()
   return (
     <main className="relative min-h-screen overflow-hidden text-zinc-100">
       {/* Gradient backdrop */}
@@ -35,7 +34,7 @@ export default function LandingPage() {
               href="/login"
               onClick={(e) => {
                 e.preventDefault()
-                navigateTo("/login")
+                navigate("/login")
               }}
               className="text-sm font-medium text-zinc-200 transition-colors hover:text-white"
             >
@@ -64,7 +63,7 @@ export default function LandingPage() {
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4 animate-fade-up" style={{ animationDelay: "0.2s", animationFillMode: "both" }}>
             <Button
               className="h-12 rounded-xl px-6 py-3 text-sm"
-              onClick={() => navigateTo("/login")}
+              onClick={() => navigate("/login")}
             >
               Get Started <ArrowRight size={16} />
             </Button>

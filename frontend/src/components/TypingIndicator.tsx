@@ -1,5 +1,3 @@
-"use client"
-
 export function TypingIndicator() {
   return (
     <div className="flex items-center gap-3 px-1 py-1 text-xs text-zinc-500">

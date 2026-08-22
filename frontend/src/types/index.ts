@@ -71,6 +71,7 @@ export interface TenantConfig {
   }
   exam: {
     configId?: string
+    type?: "coding" | "conceptual" | "system_design" | "multiple_choice"
     title: string
     description?: string
     problemStatement: string

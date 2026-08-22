@@ -7,11 +7,18 @@ import {
   recordAgentEvent,
   recordCodeSnapshot,
   submitSession,
+  dbQuery,
 } from "../lib/db.js"
 import { deriveCodeState } from "../lib/examStateManager.js"
+import { authenticateJWT, requireStudentAccess } from "../middleware/authMiddleware.js"
+import { generateExamConfig } from "../agents/examGenerator.js"
 
 const router = Router()
 
+/**
+ * POST /api/session
+ * Creates a new exam session.
+ */
 router.post("/", async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
@@ -36,7 +43,62 @@ router.post("/", async (req: Request, res: Response) => {
   }
 })
 
-router.get("/:sessionId", async (req: Request, res: Response) => {
+/**
+ * POST /api/session/generate-learning
+ * Generates an on-the-fly custom interactive module for self-learners based on topic and domain.
+ */
+router.post("/generate-learning", async (req: Request, res: Response) => {
+  const { topic, domain, seniority, assessmentType } = req.body
+
+  if (!topic) {
+    return res.status(400).json({ error: "topic is required" })
+  }
+
+  try {
+    const generated = await generateExamConfig({
+      prompt: `Create a hands-on Socratic learning challenge and practical simulation for topic: "${topic}".`,
+      domain: domain || "Software Engineering",
+      seniority: seniority || "Mid-Level",
+      assessmentType: assessmentType || "coding",
+    })
+
+    return res.json(generated)
+  } catch (err: any) {
+    console.error("[Session] Learning generation failed:", err?.message || err)
+    return res.status(500).json({ error: "Failed to generate learning challenge" })
+  }
+})
+
+/**
+ * GET /api/session/my
+ */
+router.get("/my", authenticateJWT, async (req: Request, res: Response) => {
+  if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
+
+  const userId = req.user?.userId
+  if (!userId) return res.status(401).json({ error: "Authentication required" })
+
+  try {
+    const result = await dbQuery(
+      `SELECT es.id, es.org_id, es.student_id, es.status, es.started_at, es.submitted_at,
+              es.time_elapsed_seconds, es.passed, es.final_code
+       FROM exam_sessions es
+       WHERE es.student_id = $1
+       ORDER BY es.started_at DESC
+       LIMIT 20`,
+      [userId]
+    )
+    return res.json(result.rows)
+  } catch (err: any) {
+    console.error("[Session] My sessions failed:", err?.message)
+    return res.status(500).json({ error: "Failed to load sessions" })
+  }
+})
+
+/**
+ * GET /api/session/:sessionId
+ */
+router.get("/:sessionId", authenticateJWT, requireStudentAccess, async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
   try {
@@ -49,7 +111,10 @@ router.get("/:sessionId", async (req: Request, res: Response) => {
   }
 })
 
-router.get("/:sessionId/events", async (req: Request, res: Response) => {
+/**
+ * GET /api/session/:sessionId/events
+ */
+router.get("/:sessionId/events", authenticateJWT, requireStudentAccess, async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
   try {
@@ -60,6 +125,9 @@ router.get("/:sessionId/events", async (req: Request, res: Response) => {
   }
 })
 
+/**
+ * POST /api/session/:sessionId/events
+ */
 router.post("/:sessionId/events", async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
@@ -83,6 +151,9 @@ router.post("/:sessionId/events", async (req: Request, res: Response) => {
   }
 })
 
+/**
+ * POST /api/session/:sessionId/snapshots
+ */
 router.post("/:sessionId/snapshots", async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
@@ -106,6 +177,9 @@ router.post("/:sessionId/snapshots", async (req: Request, res: Response) => {
   }
 })
 
+/**
+ * POST /api/session/:sessionId/submit
+ */
 router.post("/:sessionId/submit", async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 

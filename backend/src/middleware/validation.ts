@@ -8,7 +8,6 @@ const safeName = z.string().min(1).max(200)
 const safeSlug = z.string().min(1).max(50)
 const safeCode = z.string().max(50_000)
 const safeEmail = z.string().email().max(320)
-
 // ── Chat ──────────────────────────────────────────────────────────
 
 export const ChatRequestSchema = z.object({
@@ -22,15 +21,15 @@ export const ChatRequestSchema = z.object({
     .max(50),
   studentName: safeName,
   examState: z.object({
-      bugFixed: z.boolean(),
-      approach: z.string(),
-      curveballSeen: z.boolean(),
-      curveballAddressed: z.boolean(),
-      hintsGiven: z.number(),
-      turnsElapsed: z.number(),
-      lastCodeState: z.enum(["INITIAL", "COMPILING", "SYNTAX_ERROR", "LOGIC_ERROR", "OPTIMIZED", "UNKNOWN"]),
-      lastIntentClass: z.string(),
-    })
+    bugFixed: z.boolean(),
+    approach: z.string(),
+    curveballSeen: z.boolean(),
+    curveballAddressed: z.boolean(),
+    hintsGiven: z.number(),
+    turnsElapsed: z.number(),
+    lastCodeState: z.enum(["INITIAL", "COMPILING", "SYNTAX_ERROR", "LOGIC_ERROR", "OPTIMIZED", "UNKNOWN"]),
+    lastIntentClass: z.string(),
+  })
     .optional(),
   sessionId: uuidField.nullable().optional(),
   orgSlug: safeSlug.optional(),
@@ -107,29 +106,26 @@ export const ConfigUpdateSchema = z.object({
 // ── Upload ────────────────────────────────────────────────────────
 
 export const UploadSchema = z.object({
-  orgId: uuidField,
-  sessionId: uuidField.nullable().optional(),
+  orgId: z.string().min(1).max(200),
+  sessionId: z.string().max(200).nullable().optional(),
 })
 
 // ── Auth ──────────────────────────────────────────────────────────
 
 export const LoginSchema = z.object({
   email: safeEmail,
-  password: z.string().min(8).max(128),
+  password: z.string().min(6).max(128),
 })
 
 export const RegisterSchema = z.object({
   email: safeEmail,
-  password: z.string().min(8).max(128),
+  password: z.string().min(6).max(128),
   orgSlug: safeSlug,
   orgName: z.string().min(1).max(200),
 })
 
 export const InviteTokenSchema = z.object({
-  token: z
-    .string()
-    .length(32)
-    .regex(/^[a-zA-Z0-9]+$/, "Token must be alphanumeric"),
+  token: z.string().min(3).max(64),
 })
 
 // ── Middleware factory ────────────────────────────────────────────

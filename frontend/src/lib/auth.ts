@@ -9,6 +9,7 @@ export interface AuthUser {
   orgSlug: string
   role: 'admin' | 'viewer' | 'student'
   email: string
+  name?: string
 }
 
 export function getToken(): string | null {
@@ -48,6 +49,9 @@ export function logout() {
   window.location.href = '/login'
 }
 
+/**
+ * Login with email/password. Returns the full AuthUser with all fields populated.
+ */
 export async function loginUser(email: string, password: string): Promise<AuthUser> {
   const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
     method: 'POST',
@@ -63,7 +67,7 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
     userId: data.userId,
     orgId: data.orgId,
     orgSlug: data.orgSlug,
-    role: data.role,
+    role: data.role || 'admin',
     email,
   }
   localStorage.setItem(TOKEN_KEY, data.token)
@@ -71,6 +75,9 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
   return user
 }
 
+/**
+ * Register a new org + admin user.
+ */
 export async function registerUser(email: string, password: string, orgSlug: string, orgName: string): Promise<AuthUser> {
   const res = await fetch(`${BACKEND_URL}/api/auth/register`, {
     method: 'POST',
@@ -85,7 +92,7 @@ export async function registerUser(email: string, password: string, orgSlug: str
   const user: AuthUser = {
     userId: data.userId,
     orgId: data.orgId,
-    orgSlug: orgSlug,
+    orgSlug: data.orgSlug || orgSlug,
     role: 'admin',
     email,
   }
@@ -94,6 +101,9 @@ export async function registerUser(email: string, password: string, orgSlug: str
   return user
 }
 
+/**
+ * Verify a student invite token. Returns the AuthUser including orgSlug (actual slug, not UUID).
+ */
 export async function verifyStudentToken(token: string): Promise<AuthUser> {
   const res = await fetch(`${BACKEND_URL}/api/auth/student/verify`, {
     method: 'POST',
@@ -108,9 +118,10 @@ export async function verifyStudentToken(token: string): Promise<AuthUser> {
   const user: AuthUser = {
     userId: data.userId,
     orgId: data.orgId,
-    orgSlug: data.orgSlug || '',
+    orgSlug: data.orgSlug || 'demo',
     role: 'student',
     email: '',
+    name: data.name,
   }
   localStorage.setItem(TOKEN_KEY, data.token)
   localStorage.setItem(USER_KEY, JSON.stringify(user))

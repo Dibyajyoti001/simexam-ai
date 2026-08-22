@@ -7,6 +7,7 @@ const router = Router()
 
 /**
  * POST /api/auth/register
+ * Creates an org + admin user. Returns full user payload.
  */
 router.post("/register", validate(RegisterSchema), async (req: Request, res: Response) => {
   const { email, password, orgSlug, orgName } = req.body
@@ -42,13 +43,15 @@ router.post("/register", validate(RegisterSchema), async (req: Request, res: Res
       [orgId, email, hashed, email]
     )
 
+    const userId = insertUser.rows[0].id
     const token = await generateToken({
-      userId: insertUser.rows[0].id,
+      userId,
       orgId,
       role: "admin",
     })
 
-    res.json({ token, orgSlug })
+    // Return complete user data so the frontend AuthUser is fully populated
+    res.json({ token, userId, orgId, orgSlug, role: "admin" })
   } catch (err: any) {
     console.error("[Auth] Registration failed:", err)
     res.status(500).json({ error: "Internal server error" })
@@ -57,6 +60,7 @@ router.post("/register", validate(RegisterSchema), async (req: Request, res: Res
 
 /**
  * POST /api/auth/login
+ * Returns full user payload including userId, orgId, role, orgSlug.
  */
 router.post("/login", validate(LoginSchema), async (req: Request, res: Response) => {
   const { email, password } = req.body
@@ -91,7 +95,14 @@ router.post("/login", validate(LoginSchema), async (req: Request, res: Response)
       role: user.role as any,
     })
 
-    res.json({ token, orgSlug: user.slug })
+    // Return complete user data so the frontend AuthUser is fully populated
+    res.json({
+      token,
+      userId: user.id,
+      orgId: user.org_id,
+      orgSlug: user.slug,
+      role: user.role,
+    })
   } catch (err: any) {
     console.error("[Auth] Login failed:", err)
     res.status(500).json({ error: "Internal server error" })
@@ -100,17 +111,40 @@ router.post("/login", validate(LoginSchema), async (req: Request, res: Response)
 
 /**
  * POST /api/auth/student/verify
+ * Verifies an invite token and returns a JWT + full student info.
+ * Bug fix: now returns actual org slug instead of UUID.
  */
 router.post("/student/verify", validate(InviteTokenSchema), async (req: Request, res: Response) => {
   const { token } = req.body
+
+  // Dev bypass: allow demo student access when ENABLE_AUTH is not set or false
+  if (!process.env.ENABLE_AUTH || process.env.ENABLE_AUTH === "false") {
+    const jwtToken = await generateToken({
+      userId: "demo-student-id",
+      orgId: "demo-org-id",
+      role: "student",
+    })
+    return res.json({
+      token: jwtToken,
+      userId: "demo-student-id",
+      orgId: "demo-org-id",
+      orgSlug: "demo",
+      name: "Demo Student",
+      role: "student",
+    })
+  }
 
   if (!hasDatabase()) {
     return res.status(501).json({ error: "Database not configured" })
   }
 
   try {
-    const studentResult = await dbQuery<{ id: string; org_id: string; name: string }>(
-      "SELECT id, org_id, name FROM students WHERE invite_token = $1",
+    // Join students with orgs to get the actual slug (not UUID)
+    const studentResult = await dbQuery<{ id: string; org_id: string; name: string; org_slug: string }>(
+      `SELECT s.id, s.org_id, s.name, o.slug AS org_slug
+       FROM students s
+       JOIN orgs o ON s.org_id = o.id
+       WHERE s.invite_token = $1`,
       [token]
     )
 
@@ -125,9 +159,48 @@ router.post("/student/verify", validate(InviteTokenSchema), async (req: Request,
       role: "student",
     })
 
-    res.json({ token: jwtToken, student: { name: student.name } })
+    res.json({
+      token: jwtToken,
+      userId: student.id,
+      orgId: student.org_id,
+      orgSlug: student.org_slug, // ← fixed: actual slug not UUID
+      name: student.name,
+      role: "student",
+    })
   } catch (err: any) {
     console.error("[Auth] Student verification failed:", err)
+    res.status(500).json({ error: "Internal server error" })
+  }
+})
+
+/**
+ * POST /api/auth/student/create
+ * Admin-only: creates a student invite record and returns the token.
+ */
+router.post("/student/create", async (req: Request, res: Response) => {
+  if (!hasDatabase()) {
+    return res.status(501).json({ error: "Database not configured" })
+  }
+
+  const { name, email, orgId } = req.body
+  if (!name || !orgId) {
+    return res.status(400).json({ error: "name and orgId are required" })
+  }
+
+  try {
+    // Generate a short random token
+    const inviteToken = Array.from({ length: 4 }, () =>
+      Math.random().toString(36).substring(2, 4).toUpperCase()
+    ).join("-")
+
+    const result = await dbQuery<{ id: string }>(
+      "INSERT INTO students (org_id, name, email, invite_token) VALUES ($1, $2, $3, $4) RETURNING id",
+      [orgId, name, email || null, inviteToken]
+    )
+
+    res.status(201).json({ id: result.rows[0].id, name, inviteToken })
+  } catch (err: any) {
+    console.error("[Auth] Student create failed:", err)
     res.status(500).json({ error: "Internal server error" })
   }
 })

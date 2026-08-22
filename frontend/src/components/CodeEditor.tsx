@@ -1,5 +1,3 @@
-"use client"
-
 import { Check, Copy, Play } from "lucide-react"
 import Editor from "@monaco-editor/react"
 import { useMemo, useState } from "react"
@@ -12,6 +10,7 @@ interface CodeEditorProps {
   onRun: () => void
   onSubmit: () => void
   onCopy?: () => void
+  filename?: string
   language?: string
   languages?: string[]
   onLanguageChange?: (language: string) => void
@@ -23,11 +22,15 @@ export function CodeEditor({
   onRun,
   onSubmit,
   onCopy,
+  filename,
   language = "javascript",
   languages = ["javascript"],
   onLanguageChange,
 }: CodeEditorProps) {
   const [copied, setCopied] = useState(false)
+
+  const extension = language === "python" ? ".py" : language === "typescript" ? ".ts" : language === "java" ? ".java" : ".js"
+  const displayFilename = filename || `solution${extension}`
 
   const lines = useMemo(() => code.split("\n"), [code])
   const lineNumbers = useMemo(
@@ -53,13 +56,12 @@ export function CodeEditor({
           <div>
             <CardTitle className="text-xl sm:text-2xl">Code workspace</CardTitle>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-              Fix the broken sort, explain your thinking when needed, and improve the approach after the
-              requirement changes.
+              Implement your solution, run test cases, and explain your approach to the AI mentor.
             </p>
           </div>
 
           <div className="hidden rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-medium tracking-[0.16em] text-zinc-400 sm:block">
-            production-sort.js
+            {displayFilename.toLowerCase()}
           </div>
         </div>
       </CardHeader>
@@ -67,7 +69,7 @@ export function CodeEditor({
       <CardContent className="space-y-4 p-4 sm:p-5">
         <div className="overflow-hidden rounded-3xl border border-white/8 bg-zinc-950/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
           <div className="flex items-center justify-between border-b border-white/8 px-4 py-3 text-xs text-zinc-500">
-            <span className="font-medium tracking-[0.14em]">PRODUCTION-SORT.JS</span>
+            <span className="font-medium tracking-[0.14em] uppercase">{displayFilename}</span>
             {languages.length > 1 ? (
               <select
                 value={language}

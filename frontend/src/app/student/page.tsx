@@ -41,7 +41,12 @@ export default function StudentHub() {
   function handleAction(type: "exam" | "learn") {
     if (!inputValue.trim()) return
     sessionStorage.setItem("simexam_hub_intent", type)
-    sessionStorage.setItem("simexam_hub_query", inputValue)
+    sessionStorage.setItem("simexam_hub_query", inputValue.trim())
+    sessionStorage.removeItem("simexam_code")
+    sessionStorage.removeItem("simexam_dynamic_config")
+    sessionStorage.removeItem("simexam_session_id")
+    sessionStorage.removeItem("simexam_mode_conceptual")
+    sessionStorage.removeItem("simexam_mode_whiteboard")
     navigate(`/${user?.orgSlug || "demo"}/intake`)
   }
 

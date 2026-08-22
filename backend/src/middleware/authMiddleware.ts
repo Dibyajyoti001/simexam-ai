@@ -12,9 +12,11 @@ declare global {
 }
 
 const JWT_SECRET = process.env.JWT_SECRET
+const AUTH_ENABLED = process.env.ENABLE_AUTH === "true"
+const SIGNING_SECRET = JWT_SECRET || "simexam-local-development-only"
 
-if (!JWT_SECRET && process.env.ENABLE_AUTH !== "false") {
-  throw new Error("JWT_SECRET must be configured unless ENABLE_AUTH=false")
+if (!JWT_SECRET && AUTH_ENABLED) {
+  throw new Error("JWT_SECRET must be configured when ENABLE_AUTH=true")
 }
 
 // ── Dynamic imports (these packages may not be installed yet) ─────
@@ -49,7 +51,7 @@ export async function generateToken(
 ): Promise<string> {
   const jwt = await getJwt()
   if (!jwt) throw new Error("jsonwebtoken is not available")
-  return jwt.sign(payload, JWT_SECRET || "", { expiresIn: "24h" })
+  return jwt.sign(payload, SIGNING_SECRET, { expiresIn: "24h" })
 }
 
 /**
@@ -58,7 +60,7 @@ export async function generateToken(
 export async function verifyToken(token: string): Promise<JWTPayload> {
   const jwt = await getJwt()
   if (!jwt) throw new Error("jsonwebtoken is not available")
-  return jwt.verify(token, JWT_SECRET || "") as JWTPayload
+  return jwt.verify(token, SIGNING_SECRET) as JWTPayload
 }
 
 // ── Express middleware ────────────────────────────────────────────
@@ -68,8 +70,8 @@ export async function verifyToken(token: string): Promise<JWTPayload> {
  * In dev mode (ENABLE_AUTH not set), all requests pass through.
  */
 export function authenticateJWT(req: Request, res: Response, next: NextFunction): void {
-  if (process.env.ENABLE_AUTH === "false") {
-    // Explicitly disabled for dev/test
+  if (!AUTH_ENABLED) {
+    // Auth is deliberately opt-in so a local/demo setup works without secrets.
     next()
     return
   }
@@ -97,7 +99,7 @@ export function authenticateJWT(req: Request, res: Response, next: NextFunction)
  * Requires the authenticated user to have the 'admin' role.
  */
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  if (process.env.ENABLE_AUTH === "false") {
+  if (!AUTH_ENABLED) {
     next()
     return
   }
@@ -120,7 +122,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
  * Prevents cross-tenant access (IDOR). Must be used after authenticateJWT + requireAdmin.
  */
 export function requireOrgOwnership(req: Request, res: Response, next: NextFunction): void {
-  if (process.env.ENABLE_AUTH === "false") {
+  if (!AUTH_ENABLED) {
     next()
     return
   }
@@ -164,7 +166,7 @@ export function requireOrgOwnership(req: Request, res: Response, next: NextFunct
  * session within their org.
  */
 export function requireStudentAccess(req: Request, res: Response, next: NextFunction): void {
-  if (process.env.ENABLE_AUTH === "false") {
+  if (!AUTH_ENABLED) {
     next()
     return
   }

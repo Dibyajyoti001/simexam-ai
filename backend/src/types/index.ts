@@ -40,6 +40,8 @@ export interface ChatRequestBody {
   examState?: ExamState
   sessionId?: string
   orgSlug?: string
+  assessmentType?: AssessmentType
+  runtimeConfig?: TenantConfig
 }
 
 export interface RubricDimension {

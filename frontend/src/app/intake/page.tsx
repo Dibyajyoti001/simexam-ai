@@ -6,6 +6,7 @@ import { Card, CardContent } from "../../components/ui/card"
 import { useAuth } from "../../hooks/useAuth"
 import { generateLearningChallenge } from "../../lib/api"
 import { SESSION_KEYS } from "../../lib/constants"
+import { createLocalChallenge } from "../../hooks/useTenantConfig"
 
 const DOMAIN_OPTIONS = [
   "Backend & APIs",
@@ -44,14 +45,27 @@ export default function IntakePage() {
   const [generating, setGenerating] = useState(false)
 
   async function handleStart() {
+    // Every intake begins a new attempt. Without this, an old transcript or
+    // code snapshot can make a fresh assessment look like the previous one.
+    sessionStorage.removeItem(SESSION_KEYS.SESSION_ID)
+    sessionStorage.removeItem(SESSION_KEYS.MESSAGES)
+    sessionStorage.removeItem(SESSION_KEYS.EXAM_STATE)
+    sessionStorage.removeItem(SESSION_KEYS.EVALUATION_PAYLOAD)
+    sessionStorage.removeItem(SESSION_KEYS.EVALUATION_PENDING)
+    sessionStorage.removeItem(SESSION_KEYS.RESULTS)
+    sessionStorage.removeItem("simexam_mode_conceptual")
+    sessionStorage.removeItem("simexam_mode_whiteboard")
     sessionStorage.setItem("simexam_intake_focus", focusArea)
     sessionStorage.setItem("simexam_intake_experience", experience)
     sessionStorage.setItem("simexam_intake_format", format)
 
     const resolvedSlug = orgSlug || user?.orgSlug || "demo"
 
-    // If student is learning a custom topic, generate on-the-fly challenge
-    if (hubQuery && hubIntent === "learn") {
+    // Check if query is an invite token or a custom learning/assessment topic
+    const isInviteToken = /^[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(hubQuery.trim())
+    const shouldGenerateCustom = Boolean(hubQuery && !isInviteToken && (hubIntent === "learn" || hubQuery.length > 1))
+
+    if (shouldGenerateCustom) {
       setGenerating(true)
       try {
         const challenge = await generateLearningChallenge({
@@ -64,12 +78,25 @@ export default function IntakePage() {
         if (challenge.exam) {
           sessionStorage.setItem("simexam_dynamic_config", JSON.stringify(challenge))
           sessionStorage.setItem(SESSION_KEYS.CODE, challenge.exam.starterCode || "")
+          sessionStorage.setItem("simexam_intake_format", challenge.exam.type || format)
         }
       } catch (err) {
-        console.warn("[Intake] On-the-fly learning challenge generation skipped, using fallback.")
+        const localChallenge = createLocalChallenge({
+          orgSlug: resolvedSlug,
+          topic: hubQuery,
+          domain: focusArea,
+          assessmentType: format,
+        })
+        sessionStorage.setItem("simexam_dynamic_config", JSON.stringify(localChallenge))
+        sessionStorage.setItem(SESSION_KEYS.CODE, localChallenge.exam?.starterCode || "")
+        sessionStorage.setItem("simexam_intake_format", localChallenge.exam?.type || format)
+        console.warn("[Intake] AI generation unavailable; opened a format-specific local challenge.")
       } finally {
         setGenerating(false)
       }
+    } else {
+      sessionStorage.removeItem("simexam_dynamic_config")
+      sessionStorage.removeItem(SESSION_KEYS.CODE)
     }
 
     navigate(`/${resolvedSlug}/exam`)

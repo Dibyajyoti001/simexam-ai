@@ -3,10 +3,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   ChevronRight,
-  LayoutPanelLeft,
-  Code2,
-  PenTool,
-  LayoutTemplate,
   FileText,
   X,
   Sparkles,
@@ -38,7 +34,7 @@ import { useTerminal } from "../../hooks/useTerminal"
 import { useTenantConfig } from "../../hooks/useTenantConfig"
 import { useAgentStatus } from "../../hooks/useAgentStatus"
 import { useAuth } from "../../hooks/useAuth"
-import { TenantConfig } from "../../types/index"
+import { AssessmentType, TenantConfig } from "../../types/index"
 
 interface MultiModeState {
   coding: string
@@ -103,21 +99,20 @@ export default function WorkspacePage() {
   const hubIntent = typeof window !== "undefined" ? sessionStorage.getItem("simexam_hub_intent") : "exam"
   const intakeFormat = typeof window !== "undefined" ? sessionStorage.getItem("simexam_intake_format") : null
   
-  // Current active mode
-  const [activeMode, setActiveMode] = useState<"coding" | "system_design" | "conceptual" | "multiple_choice">(() => {
-    if (intakeFormat === "system_design" || intakeFormat === "conceptual" || intakeFormat === "coding") {
-      return intakeFormat
-    }
-    return effectiveConfig.exam?.type || "coding"
-  })
+  const configuredMode = (
+    dynamicConfig?.exam?.type ||
+    effectiveConfig.exam?.type ||
+    intakeFormat ||
+    "coding"
+  ) as AssessmentType
+  const [activeMode, setActiveMode] = useState<AssessmentType>(configuredMode)
   const [selectedLanguage, setSelectedLanguage] = useState(effectiveConfig.exam?.allowedLanguages?.[0] || "javascript")
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({})
+  const configurationUnavailable = resolvedSlug !== "demo" && Boolean(tenant.error) && !dynamicConfig
 
   useEffect(() => {
-    if (effectiveConfig.exam?.type && !intakeFormat) {
-      setActiveMode(effectiveConfig.exam.type)
-    }
-  }, [effectiveConfig.exam?.type, intakeFormat])
+    setActiveMode(configuredMode)
+  }, [configuredMode])
 
   useEffect(() => {
     const languages = effectiveConfig.exam?.allowedLanguages || ["javascript"]
@@ -126,19 +121,23 @@ export default function WorkspacePage() {
 
   // Separated, isolated state storage per assessment mode
   const [modeState, setModeState] = useState<MultiModeState>(() => {
-    const starter = effectiveConfig.exam.starterCode || INITIAL_CODE
+    const starter = dynamicConfig?.exam?.starterCode || effectiveConfig.exam?.starterCode || INITIAL_CODE
+    const storedCode = typeof window !== "undefined" ? sessionStorage.getItem(SESSION_KEYS.CODE) : null
     return {
-      coding: (typeof window !== "undefined" && sessionStorage.getItem(SESSION_KEYS.CODE)) || starter,
+      coding: storedCode || starter,
       conceptual: (typeof window !== "undefined" && sessionStorage.getItem("simexam_mode_conceptual")) || "# Design & Architectural Tradeoffs\n\nExplain your high-level system architecture, data flow, bottlenecks, and security considerations here...",
       system_design: (typeof window !== "undefined" && sessionStorage.getItem("simexam_mode_whiteboard")) || "{}",
     }
   })
 
   useEffect(() => {
-    if (effectiveConfig.exam?.starterCode && !sessionStorage.getItem(SESSION_KEYS.CODE)) {
+    if (dynamicConfig?.exam?.starterCode !== undefined) {
+      setModeState(prev => ({ ...prev, coding: dynamicConfig.exam!.starterCode }))
+      sessionStorage.setItem(SESSION_KEYS.CODE, dynamicConfig.exam.starterCode)
+    } else if (effectiveConfig.exam?.starterCode && !sessionStorage.getItem(SESSION_KEYS.CODE)) {
       setModeState(prev => ({ ...prev, coding: effectiveConfig.exam.starterCode }))
     }
-  }, [effectiveConfig.exam?.starterCode])
+  }, [effectiveConfig.exam?.starterCode, dynamicConfig])
 
   const setCodingContent = (content: string) => {
     setModeState(prev => ({ ...prev, coding: content }))
@@ -157,7 +156,7 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    if (!resolvedSlug || sessionId) return
+    if (!resolvedSlug || sessionId || configurationUnavailable) return
 
     void createSession({
       orgSlug: resolvedSlug,
@@ -172,7 +171,7 @@ export default function WorkspacePage() {
       .catch((err) => {
         console.warn("[Workspace] Could not create session:", err?.message || err)
       })
-  }, [resolvedSlug, sessionId, studentName, user?.email])
+  }, [configurationUnavailable, resolvedSlug, sessionId, studentName, user?.email])
 
   const [draft, setDraft] = useState("")
   const [debugVisible, setDebugVisible] = useState(false)
@@ -292,6 +291,29 @@ export default function WorkspacePage() {
     return "solution.js"
   }, [effectiveConfig.exam?.title])
 
+  const formatLabel = activeMode === "system_design"
+    ? "System design"
+    : activeMode === "conceptual"
+      ? "Technical writing"
+      : activeMode === "multiple_choice"
+        ? "Knowledge check"
+        : "Live coding"
+
+  if (configurationUnavailable) {
+    return (
+      <TenantShell orgSlug={resolvedSlug}>
+        <main className="flex min-h-screen items-center justify-center px-4 text-zinc-100">
+          <div className="w-full max-w-lg rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-300">Configuration required</p>
+            <h1 className="mt-2 text-2xl font-semibold">This organization has no active assessment.</h1>
+            <p className="mt-3 text-sm leading-6 text-zinc-400">Ask an administrator to publish the organization configuration before starting a session.</p>
+            <Button className="mt-5" variant="outline" onClick={() => navigate("/dashboard")}>Back to dashboard</Button>
+          </div>
+        </main>
+      </TenantShell>
+    )
+  }
+
   return (
     <TenantShell orgSlug={resolvedSlug}>
       <main className="flex h-screen flex-col overflow-hidden bg-surface text-zinc-100 font-sans">
@@ -312,33 +334,9 @@ export default function WorkspacePage() {
               {effectiveConfig.exam.title || "Technical Assessment"}
             </span>
 
-            {/* Mode Switcher */}
-            <div className="ml-2 flex items-center rounded-lg border border-white/10 bg-white/[0.02] p-0.5">
-              <button
-                onClick={() => setActiveMode("coding")}
-                className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors ${
-                  activeMode === "coding" ? "bg-indigo-600 text-white font-medium shadow-sm" : "text-zinc-400 hover:text-zinc-200"
-                }`}
-              >
-                <Code2 size={12} /> Coding
-              </button>
-              <button
-                onClick={() => setActiveMode("system_design")}
-                className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors ${
-                  activeMode === "system_design" ? "bg-indigo-600 text-white font-medium shadow-sm" : "text-zinc-400 hover:text-zinc-200"
-                }`}
-              >
-                <LayoutPanelLeft size={12} /> Whiteboard
-              </button>
-              <button
-                onClick={() => setActiveMode("conceptual")}
-                className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors ${
-                  activeMode === "conceptual" ? "bg-indigo-600 text-white font-medium shadow-sm" : "text-zinc-400 hover:text-zinc-200"
-                }`}
-              >
-                <PenTool size={12} /> Essay
-              </button>
-            </div>
+            <span className="ml-2 rounded-md border border-white/10 bg-white/[0.02] px-2.5 py-1 text-xs font-medium text-zinc-300">
+              {formatLabel}
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -372,6 +370,16 @@ export default function WorkspacePage() {
           
           {/* Main Content Area */}
           <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-white/5 bg-surface-raised shadow-sm">
+             <div className="shrink-0 border-b border-white/5 px-5 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-300">{formatLabel}</div>
+                    <h1 className="mt-1 truncate text-base font-semibold text-zinc-100">{effectiveConfig.exam.title}</h1>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-400">{effectiveConfig.exam.problemStatement}</p>
+                  </div>
+                  <button onClick={() => setShowSpecsModal(true)} className="shrink-0 text-xs font-medium text-indigo-300 hover:text-indigo-200">View brief</button>
+                </div>
+             </div>
              {activeMode === "coding" && (
                 <div className="flex flex-1 flex-col overflow-hidden">
                   <div className="flex-1 overflow-hidden">
@@ -381,6 +389,8 @@ export default function WorkspacePage() {
                       onRun={runCurrentCode}
                       onSubmit={() => submitAssessment(false)}
                       filename={editorFilename}
+                      title={effectiveConfig.exam.title}
+                      description={effectiveConfig.exam.description}
                       language={selectedLanguage}
                       languages={effectiveConfig.exam?.allowedLanguages || ["javascript"]}
                       onLanguageChange={setSelectedLanguage}
@@ -397,6 +407,8 @@ export default function WorkspacePage() {
                    <RichTextEditor
                      value={modeState.conceptual}
                      onChange={setConceptualContent}
+                     title={effectiveConfig.exam.title}
+                     prompt={effectiveConfig.exam.problemStatement}
                      sessionId={sessionId}
                      orgSlug={resolvedSlug}
                    />
@@ -408,6 +420,8 @@ export default function WorkspacePage() {
                    <WhiteboardCanvas
                      value={modeState.system_design}
                      onChange={setSystemDesignContent}
+                     title={effectiveConfig.exam.title}
+                     prompt={effectiveConfig.exam.problemStatement}
                      sessionId={sessionId}
                      orgSlug={resolvedSlug}
                    />

@@ -13,6 +13,8 @@ import {
   logout as authLogout,
   loginUser,
   registerUser,
+  verifyStudentToken,
+  loginDemoUser,
   AuthUser,
 } from "../lib/auth"
 
@@ -23,6 +25,8 @@ interface AuthContextValue {
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<{ orgSlug?: string }>
   register: (email: string, password: string, orgSlug: string, orgName: string) => Promise<{ orgSlug?: string }>
+  loginStudent: (token: string) => Promise<AuthUser>
+  loginDemo: (role?: 'student' | 'admin', orgSlug?: string, name?: string) => Promise<AuthUser>
   logout: () => void
 }
 
@@ -60,6 +64,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   )
 
+  const loginStudent = useCallback(async (inviteToken: string) => {
+    const resultUser = await verifyStudentToken(inviteToken)
+    setUser(resultUser)
+    setTokenState(getToken())
+    return resultUser
+  }, [])
+
+  const loginDemo = useCallback(
+    async (role: 'student' | 'admin' = 'student', orgSlug: string = 'demo', name?: string) => {
+      const resultUser = await loginDemoUser(role, orgSlug, name)
+      setUser(resultUser)
+      setTokenState(getToken())
+      return resultUser
+    },
+    []
+  )
+
   const logout = useCallback(() => {
     authLogout()
     setTokenState(null)
@@ -74,9 +95,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: Boolean(user && token),
       login,
       register,
+      loginStudent,
+      loginDemo,
       logout,
     }),
-    [user, token, isLoading, login, register, logout]
+    [user, token, isLoading, login, register, loginStudent, loginDemo, logout]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

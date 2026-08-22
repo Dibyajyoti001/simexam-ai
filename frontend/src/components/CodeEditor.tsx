@@ -11,6 +11,8 @@ interface CodeEditorProps {
   onSubmit: () => void
   onCopy?: () => void
   filename?: string
+  title?: string
+  description?: string
   language?: string
   languages?: string[]
   onLanguageChange?: (language: string) => void
@@ -23,6 +25,8 @@ export function CodeEditor({
   onSubmit,
   onCopy,
   filename,
+  title = "Code Workspace",
+  description,
   language = "javascript",
   languages = ["javascript"],
   onLanguageChange,
@@ -48,9 +52,9 @@ export function CodeEditor({
       <CardHeader className="border-b border-white/8 pb-3 shrink-0">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle className="text-lg">Code Workspace</CardTitle>
+            <CardTitle className="text-lg">{title}</CardTitle>
             <p className="mt-1 text-xs text-zinc-400">
-              Implement your solution, run test cases, and explain your approach to the Socratic AI mentor.
+              {description || "Implement your solution, run test cases, and explain your approach to the Socratic AI mentor."}
             </p>
           </div>
 

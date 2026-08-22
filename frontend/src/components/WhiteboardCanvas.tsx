@@ -7,11 +7,13 @@ import { getToken } from '../lib/auth'
 interface WhiteboardCanvasProps {
   value: string
   onChange: (val: string) => void
+  title?: string
+  prompt?: string
   sessionId?: string | null
   orgSlug?: string
 }
 
-export function WhiteboardCanvas({ value: _value, onChange, sessionId, orgSlug }: WhiteboardCanvasProps) {
+export function WhiteboardCanvas({ value: _value, onChange, title, prompt, sessionId, orgSlug }: WhiteboardCanvasProps) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -41,7 +43,11 @@ export function WhiteboardCanvas({ value: _value, onChange, sessionId, orgSlug }
   }, [sessionId, orgSlug])
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-white/10 bg-[#161618] overflow-hidden relative">
+    <div className="flex h-full flex-col overflow-hidden bg-[#161618]">
+      <div className="relative z-10 shrink-0 border-b border-white/8 bg-zinc-950/90 px-4 py-3">
+        <div className="text-sm font-semibold text-zinc-100">{title || "System design workspace"}</div>
+        {prompt ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-400">{prompt}</p> : null}
+      </div>
       <Tldraw
         onMount={(editor) => {
           editor.store.listen(() => {

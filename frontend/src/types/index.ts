@@ -45,6 +45,7 @@ export interface ChatRequestBody {
   sessionId?: string
   orgSlug?: string
   assessmentType?: AssessmentType
+  runtimeConfig?: TenantConfig
 }
 
 export interface RubricDimension {

@@ -8,11 +8,13 @@ interface RichTextEditorProps {
   value: string
   onChange: (val: string) => void
   onSubmit?: () => void
+  title?: string
+  prompt?: string
   sessionId?: string | null
   orgSlug?: string
 }
 
-export function RichTextEditor({ value, onChange, onSubmit: _onSubmit, sessionId, orgSlug }: RichTextEditorProps) {
+export function RichTextEditor({ value, onChange, onSubmit: _onSubmit, title, prompt, sessionId, orgSlug }: RichTextEditorProps) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const resetTimeout = useCallback(() => {
@@ -45,7 +47,7 @@ export function RichTextEditor({ value, onChange, onSubmit: _onSubmit, sessionId
   }, [onChange, resetTimeout])
 
   return (
-    <div className="flex h-full flex-col rounded-3xl border border-white/10 bg-[#161618] overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="flex gap-1.5">
@@ -53,7 +55,10 @@ export function RichTextEditor({ value, onChange, onSubmit: _onSubmit, sessionId
             <div className="h-3 w-3 rounded-full bg-amber-500/80" />
             <div className="h-3 w-3 rounded-full bg-emerald-500/80" />
           </div>
-          <span className="text-xs font-medium text-zinc-400">Essay & Conceptual Workspace</span>
+          <div>
+            <div className="text-xs font-medium text-zinc-300">{title || "Technical response"}</div>
+            {prompt ? <div className="mt-0.5 line-clamp-1 text-[11px] text-zinc-500">{prompt}</div> : null}
+          </div>
         </div>
       </div>
       
@@ -64,7 +69,7 @@ export function RichTextEditor({ value, onChange, onSubmit: _onSubmit, sessionId
           options={{
             spellChecker: false,
             status: false,
-            placeholder: "Write your structured response here... Markdown formatting is supported.",
+            placeholder: prompt ? "Develop your response against the assessment brief..." : "Write your structured response here... Markdown formatting is supported.",
           }}
         />
       </div>

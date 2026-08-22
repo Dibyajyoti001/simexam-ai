@@ -19,7 +19,7 @@ type AuthRole = "candidate" | "organization" | null
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { login, register, isAuthenticated, user } = useAuth()
+  const { login, register, loginStudent, loginDemo, isAuthenticated, user } = useAuth()
 
   // Selected Portal Role
   const [role, setRole] = useState<AuthRole>(null)
@@ -73,8 +73,11 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const cleanToken = inviteToken.trim().toUpperCase()
-      const data = await verifyStudentToken(cleanToken)
+      const data = await loginStudent(cleanToken)
       sessionStorage.setItem("simexam_hub_query", cleanToken)
+      sessionStorage.removeItem("simexam_code")
+      sessionStorage.removeItem("simexam_dynamic_config")
+      sessionStorage.removeItem("simexam_session_id")
       navigate(`/${data.orgSlug || "demo"}/intake`, { replace: true })
     } catch (err: any) {
       setError(err.message || "Invalid invite token. Check spelling or request a new invite.")
@@ -83,10 +86,29 @@ export default function LoginPage() {
     }
   }
 
-  function handleQuickDemo() {
-    sessionStorage.setItem("simexam_hub_intent", "exam")
-    sessionStorage.setItem("simexam_hub_query", "Demo Engineering Challenge")
-    navigate("/demo/intake")
+  async function handleQuickDemo() {
+    setLoading(true)
+    try {
+      await loginDemo('student', 'demo', 'Demo Candidate')
+      sessionStorage.setItem("simexam_hub_intent", "exam")
+      sessionStorage.setItem("simexam_hub_query", "Demo Engineering Challenge")
+      sessionStorage.removeItem("simexam_code")
+      sessionStorage.removeItem("simexam_dynamic_config")
+      sessionStorage.removeItem("simexam_session_id")
+      navigate("/demo/intake")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleEnterLearnerHub() {
+    setLoading(true)
+    try {
+      await loginDemo('student', 'demo', 'Self Learner')
+      navigate("/dashboard")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -232,9 +254,9 @@ export default function LoginPage() {
                   <p className="text-xs text-zinc-400 leading-relaxed">
                     Practice any technical discipline, run mock architecture interviews, or self-study with our low-latency Socratic AI mentor.
                   </p>
-                  <Button onClick={() => navigate("/dashboard")} className="w-full h-11 rounded-xl">
+                  <Button onClick={handleEnterLearnerHub} className="w-full h-11 rounded-xl" disabled={loading}>
                     <Zap size={16} className="mr-1.5 text-amber-300" />
-                    Enter Student Learning Hub
+                    {loading ? "Entering Hub..." : "Enter Student Learning Hub"}
                   </Button>
                 </div>
               )}

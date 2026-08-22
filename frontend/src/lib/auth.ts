@@ -127,3 +127,49 @@ export async function verifyStudentToken(token: string): Promise<AuthUser> {
   localStorage.setItem(USER_KEY, JSON.stringify(user))
   return user
 }
+
+/**
+ * Log in as a demo user (student or admin) without requiring invite tokens.
+ */
+export async function loginDemoUser(
+  role: 'admin' | 'student' | 'viewer' = 'student',
+  orgSlug: string = 'demo',
+  name: string = 'Demo User'
+): Promise<AuthUser> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/auth/student/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: 'DEMO-TOKEN' }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const user: AuthUser = {
+        userId: data.userId || 'demo-student-id',
+        orgId: data.orgId || 'demo-org-id',
+        orgSlug: data.orgSlug || orgSlug,
+        role,
+        email: `${role}@simexam.ai`,
+        name: name || data.name || 'Demo User',
+      }
+      localStorage.setItem(TOKEN_KEY, data.token)
+      localStorage.setItem(USER_KEY, JSON.stringify(user))
+      return user
+    }
+  } catch (err) {
+    // Fallback if backend is starting up
+  }
+
+  const user: AuthUser = {
+    userId: `demo-${role}-${Date.now()}`,
+    orgId: 'demo-org-id',
+    orgSlug,
+    role,
+    email: `${role}@simexam.ai`,
+    name,
+  }
+  const fakeToken = `demo.jwt.${Date.now()}`
+  localStorage.setItem(TOKEN_KEY, fakeToken)
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  return user
+}

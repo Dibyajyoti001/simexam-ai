@@ -126,7 +126,12 @@ export function useChat(studentName: string, options: {
         geminiHistory,
         studentName,
         examState,
-        { sessionId: options.sessionId, orgSlug: options.orgSlug, assessmentType: options.assessmentType },
+        {
+          sessionId: options.sessionId,
+          orgSlug: options.orgSlug,
+          assessmentType: options.assessmentType,
+          tenantConfig: options.tenant || undefined,
+        },
         (chunk) => {
           setMessages((prev) =>
             prev.map((message) =>

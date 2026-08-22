@@ -33,6 +33,8 @@ export const ChatRequestSchema = z.object({
     .optional(),
   sessionId: uuidField.nullable().optional(),
   orgSlug: safeSlug.optional(),
+  assessmentType: z.enum(["coding", "conceptual", "system_design", "multiple_choice"]).optional(),
+  runtimeConfig: z.unknown().optional(),
 })
 
 // ── Execute ───────────────────────────────────────────────────────

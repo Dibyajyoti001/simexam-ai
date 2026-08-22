@@ -342,8 +342,8 @@ async function callSimulatorLLM(
   context: AgentLoopContext,
   extraContext?: string
 ): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) throw new Error("GEMINI_API_KEY not configured")
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey) throw new Error("GROQ_API_KEY not configured")
 
   // Build messages with optional extra context
   let messages = [...context.messages]

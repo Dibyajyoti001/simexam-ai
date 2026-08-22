@@ -3,67 +3,12 @@ import { getTenantConfigBySlug, hasDatabase, recordEvaluation, recordAgentEvent,
 import { validate, EvaluateRequestSchema } from "../middleware/validation.js"
 import { pythonEvaluate } from "../tools/pythonBridge.js"
 import { EvaluateRequestBody } from "../types/index.js"
-import { authenticateJWT } from "../middleware/authMiddleware.js"
-import vm from "node:vm"
+import { authenticateJWT, requireStudentAccess } from "../middleware/authMiddleware.js"
+import { executeSandbox } from "../tools/sandboxTool.js"
 
 const router = Router()
 
-/**
- * Helper to run basic JS test cases locally if Judge0 is offline or for deterministic verification.
- */
-function evaluateTestCasesLocally(code: string, testCases: Array<{ input: any; expectedOutput: any }>): { passed: number; total: number } {
-  if (!testCases || testCases.length === 0) {
-    // If no test cases are explicitly defined, verify code is non-empty and syntactically sound
-    const isClean = code.trim().length > 30 && !code.includes("SyntaxError")
-    return { passed: isClean ? 1 : 0, total: 1 }
-  }
-
-  let passed = 0
-  for (const tc of testCases) {
-    try {
-      const inputStr = typeof tc.input === "string" ? tc.input : JSON.stringify(tc.input)
-      const expectedStr = typeof tc.expectedOutput === "string" ? tc.expectedOutput : JSON.stringify(tc.expectedOutput)
-
-      // Test harness
-      const harness = `
-${code}
-try {
-  let res;
-  if (typeof solution === 'function') {
-    res = solution(${inputStr});
-  } else if (typeof solve === 'function') {
-    res = solve(${inputStr});
-  } else if (typeof bubbleSort === 'function') {
-    res = bubbleSort(${inputStr});
-  } else if (typeof sort === 'function') {
-    res = sort(${inputStr});
-  }
-  JSON.stringify(res);
-} catch(e) {
-  'ERR:' + e.message;
-}
-`
-      // Sandboxed execution — no access to process, require, fs, etc.
-      const sandbox: Record<string, any> = {
-        JSON, Math, Array, Object, String, Number, Boolean,
-        Map, Set, parseInt, parseFloat, isNaN, isFinite,
-        undefined, NaN, Infinity,
-        console: { log: () => {}, warn: () => {}, error: () => {} },
-      }
-      const vmContext = vm.createContext(sandbox)
-      const resultStr = String(vm.runInNewContext(harness, vmContext, { timeout: 5000 }) || "")
-      if (resultStr.replace(/\s+/g, '') === expectedStr.replace(/\s+/g, '') || (!resultStr.startsWith("ERR:") && resultStr !== "undefined")) {
-        passed++
-      }
-    } catch {
-      // Test failed
-    }
-  }
-
-  return { passed, total: testCases.length }
-}
-
-router.post("/", authenticateJWT, validate(EvaluateRequestSchema), async (req: Request, res: Response) => {
+router.post("/", authenticateJWT, validate(EvaluateRequestSchema), requireStudentAccess, async (req: Request, res: Response) => {
   const body = req.body as EvaluateRequestBody
 
   if (!body.conversationHistory || !body.studentName) {
@@ -75,7 +20,7 @@ router.post("/", authenticateJWT, validate(EvaluateRequestSchema), async (req: R
   let tenant = null
   if (body.orgSlug && hasDatabase()) {
     try {
-      tenant = await getTenantConfigBySlug(body.orgSlug)
+      tenant = await getTenantConfigBySlug(body.orgSlug, true)
     } catch (e) {
       // Ignore
     }
@@ -87,40 +32,12 @@ router.post("/", authenticateJWT, validate(EvaluateRequestSchema), async (req: R
     const testCases = tenant?.exam.testCases || []
 
     // 1. Determine tests_passed and tests_total
-    let testsPassed = body.testsPassed
-    let testsTotal = body.testsTotal
-
-    if (testsPassed === undefined || testsTotal === undefined) {
-      // Try fetching from latest code_snapshot in database if sessionId provided
-      if (body.sessionId && hasDatabase()) {
-        try {
-          const snapshotRes = await dbQuery<{ test_results: any }>(
-            "SELECT test_results FROM code_snapshots WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1",
-            [body.sessionId]
-          )
-          if (snapshotRes.rows[0]?.test_results) {
-            const tr = snapshotRes.rows[0].test_results
-            if (tr.passed !== undefined && tr.total !== undefined) {
-              testsPassed = tr.passed
-              testsTotal = tr.total
-            }
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      // If still undefined, run deterministic test verification locally
-      if (testsPassed === undefined || testsTotal === undefined) {
-        if (assessmentType === "coding") {
-          const localEval = evaluateTestCasesLocally(finalCode, testCases)
-          testsPassed = localEval.passed
-          testsTotal = localEval.total
-        } else {
-          testsPassed = 1
-          testsTotal = 1
-        }
-      }
+    let testsPassed = 0
+    let testsTotal = 0
+    if (assessmentType === "coding") {
+      const execution = await executeSandbox(finalCode, "javascript", testCases)
+      testsPassed = execution.testsPassed ?? 0
+      testsTotal = execution.testsTotal ?? testCases.length
     }
 
     // 2. Count hints given dynamically from conversation transcript if not supplied

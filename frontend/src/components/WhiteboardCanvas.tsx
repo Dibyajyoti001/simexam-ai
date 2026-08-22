@@ -2,6 +2,7 @@ import { Tldraw } from '@tldraw/tldraw'
 import { BACKEND_URL } from '../lib/constants'
 import '@tldraw/tldraw/tldraw.css'
 import { useEffect, useRef } from 'react'
+import { getToken } from '../lib/auth'
 
 interface WhiteboardCanvasProps {
   value: string
@@ -20,7 +21,7 @@ export function WhiteboardCanvas({ value: _value, onChange, sessionId, orgSlug }
       if (!sessionId) return
       fetch(`${BACKEND_URL}/api/agent`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
         body: JSON.stringify({
           type: 'proactive',
           action: 'SILENCE_TIMEOUT',

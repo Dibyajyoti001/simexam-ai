@@ -185,10 +185,14 @@ router.post(
       }
 
       // Trigger Python RAG ingestion in background
-      pythonIngest(docId, resolvedOrgUuid, fileBuffer, req.file.originalname, req.file.mimetype).catch((err) => {
+      void pythonIngest(docId, resolvedOrgUuid, fileBuffer, req.file.originalname, req.file.mimetype).then((result) => {
+        if (hasDatabase()) {
+          dbQuery("UPDATE uploaded_docs SET status = $2, chunk_count = $3 WHERE id = $1", [docId, result.success && result.data?.status === "ready" ? "ready" : "error", result.data?.chunk_count || 0]).catch(() => {})
+        }
+      }).catch((err) => {
         console.warn("[Upload] Python ingestion skipped/fallback:", err?.message || err)
         if (hasDatabase()) {
-          dbQuery("UPDATE uploaded_docs SET status = 'ready', chunk_count = 1 WHERE id = $1", [docId]).catch(() => {})
+          dbQuery("UPDATE uploaded_docs SET status = 'error' WHERE id = $1", [docId]).catch(() => {})
         }
       })
 

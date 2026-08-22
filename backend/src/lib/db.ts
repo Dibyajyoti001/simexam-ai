@@ -253,7 +253,7 @@ type TenantConfigRow = {
   branding: Record<string, any>
 }
 
-function mapTenantConfig(row: TenantConfigRow): TenantConfig {
+function mapTenantConfig(row: TenantConfigRow, includeHiddenTests = false): TenantConfig {
   const branding = row.branding || {}
   const persona = row.agent_persona || {}
   const rubric = row.rubric || {}
@@ -278,7 +278,7 @@ function mapTenantConfig(row: TenantConfigRow): TenantConfig {
       timeLimitSeconds: row.time_limit_seconds,
       curveballAtSeconds: row.curveball_at_seconds,
       curveballMessage: row.curveball_message || undefined,
-      testCases: row.test_cases || [],
+      testCases: (row.test_cases || []).filter((testCase) => includeHiddenTests || !testCase.hidden),
       knowledgeBaseUrls: row.knowledge_base_urls || [],
     },
     agent: {
@@ -294,7 +294,7 @@ function mapTenantConfig(row: TenantConfigRow): TenantConfig {
   }
 }
 
-export async function getTenantConfigBySlug(slug: string): Promise<TenantConfig | null> {
+export async function getTenantConfigBySlug(slug: string, includeHiddenTests = false): Promise<TenantConfig | null> {
   const result = await dbQuery<TenantConfigRow>(
     `
     SELECT
@@ -325,7 +325,7 @@ export async function getTenantConfigBySlug(slug: string): Promise<TenantConfig 
     [slug]
   )
 
-  return result.rows[0] ? mapTenantConfig(result.rows[0]) : null
+  return result.rows[0] ? mapTenantConfig(result.rows[0], includeHiddenTests) : null
 }
 
 export async function upsertTenantConfig(config: TenantConfig): Promise<TenantConfig> {
@@ -413,7 +413,7 @@ export async function upsertTenantConfig(config: TenantConfig): Promise<TenantCo
 
     await client.query("COMMIT")
 
-    const saved = await getTenantConfigBySlug(config.orgSlug)
+    const saved = await getTenantConfigBySlug(config.orgSlug, true)
     if (!saved) throw new Error("Tenant config was not saved")
     return saved
   } catch (error) {
@@ -472,18 +472,15 @@ export async function createExamSession(input: {
 
     const student = await client.query<{ id: string }>(
       `
-      INSERT INTO students (org_id, name, email, invite_token)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (invite_token) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email
-      RETURNING id
+      SELECT id FROM students
+      WHERE org_id = $1 AND invite_token = $2
       `,
       [
         config.rows[0].org_id,
-        input.studentName,
-        input.email || null,
-        input.inviteToken || null,
+        input.inviteToken,
       ]
     )
+    if (!student.rows[0]) throw new Error("Invalid invite token for organization")
 
     const session = await client.query(
       `

@@ -21,15 +21,22 @@ const router = Router()
  * POST /api/session
  * Creates a new exam session and triggers speculative CAG prefill in background.
  */
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", authenticateJWT, async (req: Request, res: Response) => {
   if (!hasDatabase()) return res.status(503).json({ error: "DATABASE_URL not configured" })
 
   const { orgSlug, studentName, email, inviteToken } = req.body || {}
-  if (!orgSlug || !studentName) {
+  if (!orgSlug || !studentName || req.user?.role !== "student") {
     return res.status(400).json({ error: "orgSlug and studentName are required" })
   }
+  if (!inviteToken) return res.status(400).json({ error: "inviteToken is required" })
 
   try {
+    const student = await dbQuery<{ id: string }>(
+      "SELECT id FROM students WHERE id = $1 AND org_id = $2 AND invite_token = $3",
+      [req.user.userId, req.user.orgId, inviteToken]
+    )
+    if (!student.rows[0]) return res.status(403).json({ error: "Invite token does not belong to this student" })
+
     const session = await createExamSession({ orgSlug, studentName, email, inviteToken })
     await recordAgentEvent({
       sessionId: session.id,

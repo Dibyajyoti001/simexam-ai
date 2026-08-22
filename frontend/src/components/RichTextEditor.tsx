@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react"
 import { BACKEND_URL } from '../lib/constants'
 import SimpleMdeReact from "react-simplemde-editor"
 import "easymde/dist/easymde.min.css"
+import { getToken } from '../lib/auth'
 
 interface RichTextEditorProps {
   value: string
@@ -20,7 +21,7 @@ export function RichTextEditor({ value, onChange, onSubmit: _onSubmit, sessionId
       if (!sessionId) return
       fetch(`${BACKEND_URL}/api/agent`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
         body: JSON.stringify({
           type: 'proactive',
           action: 'SILENCE_TIMEOUT',

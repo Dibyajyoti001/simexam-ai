@@ -83,14 +83,14 @@ export async function executeSandbox(
 
   // Step 3: single execution
   if (!JUDGE0_URL) {
-    return staticAnalysisFallback(code, language)
+    return unavailableSandboxResult()
   }
 
   try {
     return await executeOnJudge0(code, language)
   } catch (err: any) {
     console.warn("[Sandbox] Judge0 unavailable, falling back to static analysis:", err?.message)
-    return staticAnalysisFallback(code, language)
+    return unavailableSandboxResult()
   }
 }
 
@@ -224,25 +224,10 @@ export async function runTestCases(
 
 // ── Static analysis fallback ──────────────────────────────────────
 
-function staticAnalysisFallback(code: string, language: string): SandboxResult {
-  const issues: string[] = []
-
-  // Basic static checks
-  if (language === "javascript" || language === "typescript") {
-    if (/\bvar\b/.test(code)) issues.push("Consider using 'let' or 'const' instead of 'var'")
-    if (/console\.(log|warn|error)/.test(code)) issues.push("Code contains console output statements")
-    if (code.includes("== ") && !code.includes("=== ")) issues.push("Consider using strict equality (===)")
-  }
-
-  if (language === "python") {
-    if (/\bprint\s*\(/.test(code)) issues.push("Code contains print statements")
-  }
-
+function unavailableSandboxResult(): SandboxResult {
   return {
-    stdout: issues.length
-      ? `Static analysis (sandbox unavailable):\n${issues.map((i) => `- ${i}`).join("\n")}`
-      : "Static analysis: no issues detected (sandbox unavailable for runtime testing)",
-    stderr: "",
-    exitCode: 0,
+    stdout: "",
+    stderr: "Runtime sandbox unavailable; code was not executed",
+    exitCode: 1,
   }
 }

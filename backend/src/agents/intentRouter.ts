@@ -116,8 +116,8 @@ const conceptHandler: IntentHandler = async (trigger, context) => {
   if (trigger.message && (await isPythonAvailable())) {
     try {
       const ragResult = await pythonRetrieve(trigger.message, context.tenantConfig?.orgId || '', context.sessionId)
-      if (ragResult.success && ragResult.data?.length) {
-        toolContext += `Relevant knowledge base:\n${ragResult.data.map((chunk: any, i: number) => `[${i + 1}] ${chunk.content}`).join('\n\n')}\n\n`
+      if (ragResult.success && ragResult.data?.chunks?.length) {
+        toolContext += `Relevant knowledge base:\n${ragResult.data.chunks.map((chunk: any, i: number) => `[${i + 1}] ${chunk.content}`).join('\n\n')}\n\n`
       }
     } catch (err: any) {
       console.warn('[IntentRouter] RAG retrieval skipped:', err?.message)
@@ -185,8 +185,8 @@ const doubtHandler: IntentHandler = async (trigger, context) => {
       context.tenantConfig?.orgId || "",
       context.sessionId
     )
-    if (ragResult.success && ragResult.data?.length) {
-      ragContext = `Relevant documentation:\n${ragResult.data
+    if (ragResult.success && ragResult.data?.chunks?.length) {
+      ragContext = `Relevant documentation:\n${ragResult.data.chunks
         .map((chunk, i) => `[${i + 1}] ${chunk.content}`)
         .join("\n\n")}\n\n`
     }

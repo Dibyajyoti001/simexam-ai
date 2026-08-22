@@ -2,6 +2,7 @@ import { BACKEND_URL } from "./constants"
 import { getToken } from "./auth"
 import {
   AgentEvent,
+  Commitment,
   EvaluationResult,
   ExamState,
   GeminiMessage,
@@ -230,6 +231,23 @@ export async function fetchSessionEvents(sessionId: string): Promise<AgentEvent[
   })
   if (!response.ok) throw new Error(`Events failed with status ${response.status}`)
   return response.json()
+}
+
+export async function saveSessionCommitments(sessionId: string, commitments: Commitment[]): Promise<void> {
+  const response = await fetch(`${BACKEND_URL}/api/session/${sessionId}/events`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({
+      eventType: "commitment_update",
+      actor: "student",
+      content: `${commitments.filter((commitment) => commitment.status === "open").length} open commitments`,
+      metadata: { commitments },
+    }),
+  })
+  if (!response.ok) throw new Error(`Commitments save failed with status ${response.status}`)
 }
 
 /**

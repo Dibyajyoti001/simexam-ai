@@ -17,6 +17,7 @@ function eventTypeBadge(type: AgentEvent["eventType"]) {
     proactive: "border-teal-500/20 bg-teal-500/10 text-teal-300",
     submission: "border-indigo-500/20 bg-indigo-500/10 text-indigo-300",
     evaluation: "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
+    commitment_update: "border-cyan-500/20 bg-cyan-500/10 text-cyan-300",
   }
 
   return (
@@ -70,11 +71,20 @@ function EventCard({ event }: { event: AgentEvent }) {
         </span>
       </div>
 
-      {event.content && (
+      {event.eventType === "commitment_update" && Array.isArray(event.metadata?.commitments) ? (
+        <div className="mt-3 space-y-2">
+          {(event.metadata.commitments as Array<{ title?: string; owner?: string; dueDate?: string; status?: string; priority?: string }>).map((commitment, index) => (
+            <div key={`${event.id}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 text-xs">
+              <span className={commitment.status === "done" ? "text-zinc-500 line-through" : "text-zinc-200"}>{commitment.title || "Untitled commitment"}</span>
+              <span className="shrink-0 text-zinc-500">{commitment.priority || "medium"} · {commitment.owner || "Me"} · {commitment.dueDate || "Later"}</span>
+            </div>
+          ))}
+        </div>
+      ) : event.content ? (
         <p className="mt-2 line-clamp-3 text-sm leading-6 text-zinc-300">
           {event.content}
         </p>
-      )}
+      ) : null}
 
       <button
         onClick={() => setExpanded(!expanded)}

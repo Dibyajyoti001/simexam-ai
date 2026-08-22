@@ -13,6 +13,7 @@ interface ChatPanelProps {
   onDraftChange: (value: string) => void
   onSend: () => void
   isTyping: boolean
+  className?: string
 }
 
 export function ChatPanel({
@@ -22,6 +23,7 @@ export function ChatPanel({
   onDraftChange,
   onSend,
   isTyping,
+  className,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -38,7 +40,7 @@ export function ChatPanel({
   )
 
   return (
-    <Card className="overflow-hidden border-white/10 bg-white/[0.035]">
+    <Card className={`min-h-0 flex-1 overflow-hidden border-white/10 bg-white/[0.035] ${className || ""}`}>
       <CardHeader className="border-b border-white/8 pb-4">
         <div className="flex items-start justify-between gap-4">
           <div>

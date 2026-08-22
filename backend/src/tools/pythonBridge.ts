@@ -113,11 +113,11 @@ export async function pythonIngest(
   return bridgePost(
     "/ingest",
     {
-      docId,
-      orgId,
+      doc_id: docId,
+      org_id: orgId,
       filename,
-      mimeType,
-      contentBase64: fileBuffer.toString("base64"),
+      mime_type: mimeType,
+      content_base64: fileBuffer.toString("base64"),
     },
     60_000
   )
@@ -131,8 +131,8 @@ export async function pythonRetrieve(
   orgId: string,
   sessionId?: string,
   k = 5
-): Promise<BridgeResponse<Array<{ content: string; metadata?: Record<string, unknown> }>>> {
-  return bridgePost("/retrieve", { query, orgId, sessionId, k }, 10_000)
+): Promise<BridgeResponse<{ chunks: Array<{ content: string; metadata?: Record<string, unknown> }>; query: string }>> {
+  return bridgePost("/retrieve", { query, org_id: orgId, session_id: sessionId, k }, 10_000)
 }
 
 /**

@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { useNavigate, useParams } from "react-router-dom"
 import { ChatPanel } from "../../components/ChatPanel"
+import { CommitmentTracker } from "../../components/CommitmentTracker"
 import { CodeEditor } from "../../components/CodeEditor"
 import { CurveballBanner } from "../../components/CurveballBanner"
 import { ExamStateDebugPanel } from "../../components/ExamStateDebugPanel"
@@ -109,12 +110,19 @@ export default function WorkspacePage() {
     }
     return effectiveConfig.exam?.type || "coding"
   })
+  const [selectedLanguage, setSelectedLanguage] = useState(effectiveConfig.exam?.allowedLanguages?.[0] || "javascript")
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({})
 
   useEffect(() => {
     if (effectiveConfig.exam?.type && !intakeFormat) {
       setActiveMode(effectiveConfig.exam.type)
     }
   }, [effectiveConfig.exam?.type, intakeFormat])
+
+  useEffect(() => {
+    const languages = effectiveConfig.exam?.allowedLanguages || ["javascript"]
+    if (!languages.includes(selectedLanguage)) setSelectedLanguage(languages[0])
+  }, [effectiveConfig.exam?.allowedLanguages, selectedLanguage])
 
   // Separated, isolated state storage per assessment mode
   const [modeState, setModeState] = useState<MultiModeState>(() => {
@@ -209,7 +217,7 @@ export default function WorkspacePage() {
 
   function runCurrentCode() {
     agentStatus.setStatus("running")
-    terminal.executeCode(modeState.coding, effectiveConfig.exam?.allowedLanguages?.[0] || "javascript", sessionId || undefined)
+    terminal.executeCode(modeState.coding, selectedLanguage, sessionId || undefined)
       .finally(() => agentStatus.setStatus("idle"))
     chat.recordCodeSnapshot(modeState.coding)
     examState.updateFromCode(modeState.coding, chat.curveballFired)
@@ -220,7 +228,7 @@ export default function WorkspacePage() {
     const trimmed = draft.trim()
     if (!trimmed || chat.isTyping) return
 
-    const activeContent = activeMode === "conceptual" ? modeState.conceptual : activeMode === "system_design" ? modeState.system_design : modeState.coding
+    const activeContent = activeMode === "conceptual" ? modeState.conceptual : activeMode === "system_design" ? modeState.system_design : activeMode === "multiple_choice" ? JSON.stringify(selectedAnswers) : modeState.coding
     const intent = classifyIntent(trimmed)
     examState.registerInteraction(intent)
     chat.recordCodeSnapshot(activeContent)
@@ -243,6 +251,8 @@ export default function WorkspacePage() {
       ? modeState.system_design
       : primaryType === "conceptual"
       ? modeState.conceptual
+      : primaryType === "multiple_choice"
+      ? JSON.stringify(selectedAnswers)
       : modeState.coding
 
     const payload = {
@@ -260,13 +270,11 @@ export default function WorkspacePage() {
     }
 
     if (sessionId) {
-      void submitSession({
+      await submitSession({
         sessionId,
         finalCode: finalSubmissionContent,
         timeElapsedSeconds: payload.timeElapsedSeconds,
         curveballFired: chat.curveballFired,
-      }).catch((err) => {
-        console.warn("[Workspace] Session submit failed:", err?.message || err)
       })
     }
 
@@ -373,8 +381,9 @@ export default function WorkspacePage() {
                       onRun={runCurrentCode}
                       onSubmit={() => submitAssessment(false)}
                       filename={editorFilename}
-                      language={effectiveConfig.exam?.allowedLanguages?.[0] || "javascript"}
+                      language={selectedLanguage}
                       languages={effectiveConfig.exam?.allowedLanguages || ["javascript"]}
+                      onLanguageChange={setSelectedLanguage}
                     />
                   </div>
                   <div className="h-1/3 min-h-[200px] border-t border-white/5">
@@ -404,10 +413,41 @@ export default function WorkspacePage() {
                    />
                 </div>
              )}
+
+             {activeMode === "multiple_choice" && (
+                <div className="flex-1 overflow-y-auto p-6">
+                  <h2 className="text-lg font-semibold text-zinc-100">{effectiveConfig.exam.title}</h2>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-400">{effectiveConfig.exam.problemStatement}</p>
+                  <div className="mt-6 space-y-4">
+                    {effectiveConfig.exam.testCases.filter((testCase) => !testCase.hidden).map((testCase, index) => {
+                      const question = testCase.input as { question?: string; options?: string[] }
+                      if (!question?.options?.length) return null
+                      return (
+                        <fieldset key={index} className="rounded-xl border border-white/10 p-4">
+                          <legend className="px-1 text-sm text-zinc-200">{question.question || `Question ${index + 1}`}</legend>
+                          <div className="mt-3 space-y-2">
+                            {question.options.map((option) => (
+                              <label key={option} className="flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
+                                <input type="radio" name={`question-${index}`} value={option} checked={selectedAnswers[index] === option} onChange={() => setSelectedAnswers((answers) => ({ ...answers, [index]: option }))} />
+                                {option}
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                      )
+                    })}
+                  </div>
+                </div>
+             )}
           </div>
 
           {/* AI Mentor Panel */}
           <div className="w-[420px] shrink-0 overflow-hidden rounded-xl border border-white/5 bg-surface-raised shadow-sm flex flex-col">
+             <CommitmentTracker
+               sessionId={sessionId}
+               studentName={studentName}
+               context={`${effectiveConfig.exam.title}. ${effectiveConfig.exam.problemStatement}`}
+             />
              <ChatPanel
                 studentName={studentName}
                 messages={chat.messages}

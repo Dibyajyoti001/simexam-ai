@@ -11,10 +11,10 @@ declare global {
   }
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || "simexam-dev-secret-change-me"
+const JWT_SECRET = process.env.JWT_SECRET
 
-if (JWT_SECRET === "simexam-dev-secret-change-me") {
-  console.warn("[Auth] \u26a0\ufe0f  Using default JWT_SECRET \u2014 set JWT_SECRET env var in production")
+if (!JWT_SECRET && process.env.ENABLE_AUTH !== "false") {
+  throw new Error("JWT_SECRET must be configured unless ENABLE_AUTH=false")
 }
 
 // ── Dynamic imports (these packages may not be installed yet) ─────
@@ -49,7 +49,7 @@ export async function generateToken(
 ): Promise<string> {
   const jwt = await getJwt()
   if (!jwt) throw new Error("jsonwebtoken is not available")
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "24h" })
+  return jwt.sign(payload, JWT_SECRET || "", { expiresIn: "24h" })
 }
 
 /**
@@ -58,7 +58,7 @@ export async function generateToken(
 export async function verifyToken(token: string): Promise<JWTPayload> {
   const jwt = await getJwt()
   if (!jwt) throw new Error("jsonwebtoken is not available")
-  return jwt.verify(token, JWT_SECRET) as JWTPayload
+  return jwt.verify(token, JWT_SECRET || "") as JWTPayload
 }
 
 // ── Express middleware ────────────────────────────────────────────
@@ -174,12 +174,7 @@ export function requireStudentAccess(req: Request, res: Response, next: NextFunc
     return
   }
 
-  if (req.user.role === "admin") {
-    next()
-    return
-  }
-
-  if (req.user.role === "student") {
+  if (req.user.role === "admin" || req.user.role === "student") {
     const sessionId = req.params.sessionId || req.body?.sessionId
     if (!sessionId) {
       next()
@@ -204,7 +199,7 @@ export function requireStudentAccess(req: Request, res: Response, next: NextFunc
         }
         const session = result.rows[0]
         // If session has a linked student, it must match the authenticated user
-        if (session.student_id && session.student_id !== req.user!.userId) {
+        if (req.user!.role === "student" && session.student_id !== req.user!.userId) {
           res.status(403).json({ error: "You can only access your own session" })
           return
         }

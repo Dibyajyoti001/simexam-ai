@@ -108,10 +108,24 @@ export interface SessionSummary {
   passed?: boolean | null
 }
 
+export type CommitmentStatus = "open" | "done"
+export type CommitmentPriority = "high" | "medium" | "low"
+
+export interface Commitment {
+  id: string
+  title: string
+  owner: string
+  dueDate: string
+  status: CommitmentStatus
+  priority: CommitmentPriority
+  notes: string
+  source: "suggested" | "recorded"
+}
+
 export interface AgentEvent {
   id: string
   sessionId: string
-  eventType: "message" | "code_run" | "tool_call" | "proactive" | "curveball" | "submission" | "evaluation"
+  eventType: "message" | "code_run" | "tool_call" | "proactive" | "curveball" | "submission" | "evaluation" | "commitment_update"
   actor: "student" | "agent" | "system"
   content?: string
   metadata?: Record<string, unknown>

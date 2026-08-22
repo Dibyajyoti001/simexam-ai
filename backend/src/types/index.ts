@@ -95,7 +95,7 @@ export interface TenantConfig {
 export interface AgentEvent {
   id: string
   sessionId: string
-  eventType: "message" | "code_run" | "tool_call" | "proactive" | "curveball" | "submission" | "evaluation"
+  eventType: "message" | "code_run" | "tool_call" | "proactive" | "curveball" | "submission" | "evaluation" | "commitment_update"
   actor: "student" | "agent" | "system"
   content?: string
   metadata?: Record<string, unknown>

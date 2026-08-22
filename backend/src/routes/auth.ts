@@ -119,7 +119,7 @@ router.post("/student/verify", validate(InviteTokenSchema), async (req: Request,
   const { token } = req.body
 
   // Dev bypass: allow demo student access when ENABLE_AUTH is not set or false
-  if (!process.env.ENABLE_AUTH || process.env.ENABLE_AUTH === "false") {
+  if (process.env.ENABLE_AUTH === "false") {
     const jwtToken = await generateToken({
       userId: "demo-student-id",
       orgId: "demo-org-id",
